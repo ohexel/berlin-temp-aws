@@ -11,6 +11,20 @@ dev = [
     "pytest",
     "ruff",
 ]
+# Runtime dependencies of the container images (see Dockerfile).
+pipeline = [
+    "boto3",
+    "eccodes",
+    "numpy",
+    "pandas",
+    "pyarrow",
+]
+reference = [
+    "netCDF4",
+    "openpyxl",
+    "pyproj",
+    "shapely",
+]
 
 [build-system]
 requires = ["hatchling"]

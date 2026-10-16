@@ -17,6 +17,10 @@ Status: draft for review (revision 3) · Scope: version 1 (25-point apparent-tem
 | Gold | Written once per run, by finalize, after the full horizon passes its checks |
 | Static reference build | Separate Lambda, invoked manually, run once |
 | Container images | Two images from one Dockerfile with two build targets: `reference` (for `reference_build`, includes the geospatial libraries) and `pipeline` (all other Lambdas) |
+| Image registry | One ECR repository per image: `berlin-temp-pipeline` and `berlin-temp-reference` |
+| Lambda CPU architecture | x86_64 (native builds and local tests; arm64 saving is negligible at this scale) |
+| GRIB decoder | `eccodes` |
+| `reference` image libraries | shapely, pyproj, openpyxl, netCDF4 (on top of the `pipeline` set: boto3, eccodes, numpy, pandas, pyarrow) |
 | Data bucket | One private bucket for bronze/silver/gold; lifecycle: raw GRIB 2 days, silver `forecast_cell` 7 days; static bronze and gold kept until final teardown; unfinished multipart uploads aborted after 1 day |
 | Alerts | SNS e-mail: messages in a DLQ, no publication for 3 h, discover/finalize errors |
 
@@ -365,7 +369,3 @@ These fill in the checker decision and were not discussed individually:
 - Timeouts and memory sizes measured on real runs.
 - Current prices for Lambda, SQS, DynamoDB, EventBridge Scheduler, CloudWatch before building.
 - Verify: minimum maximum-concurrency value for SQS triggers.
-- ECR: one repository with two tags, or two repositories.
-- CPU architecture: x86_64 or arm64.
-- GRIB decoder library (suggested: `eccodes`).
-- Libraries for `reference_build` (geospatial, ICON grid file, XLSX).
