@@ -278,11 +278,21 @@ finalize: {"run_time": "2026-10-13T12:00Z"}
 5. Build the dashboard JSON and publish (pointer object, bucket layout, CloudFront invalidation: next design topic).
 6. Set `published_at`.
 
+### reference_build (invoked manually, run once)
+
+1. Download the four static sources from their public URLs and write them unchanged to `bronze/static/<source>/`, each with a `.meta.json` (source URL, SHA-256, size, retrieval time; for the LOR layer also layer name and output format).
+2. Parse and build in memory: population (542 rows, rejections classified), PLR names, planning-area geometries (EPSG:25833), ICON cell triangles (all 542,040, EPSG:25833), Berlin mask (cells touching Berlin widened by 5,000 m), PLR/cell area bridge.
+3. Check before writing silver: 542 PLRs; population 540 accepted / 2 rejected; names and population ids match the LOR ids; mask 465 cells; bridge 1,678 rows; every PLR's weights sum to 1; every bridge cell is in the mask. All failed checks are reported together; on failure bronze stays written and silver is not touched.
+4. Write `silver/{plr,population,icon_cell,mask,bridge}/part.parquet` (fixed keys; a re-run overwrites with identical content). Geometries are WKB in EPSG:25833 with a `crs` column.
+
+Event option: `{"plr_layer": "<WFS layer name>"}` skips layer discovery.
+
 ## Settings
 
 | Setting | Value |
 |---|---|
 | Lambda timeouts | discover 60 s · checker 60 s · ingest 120 s · finalize 300 s (placeholders until measured) |
+| `reference_build` | timeout 900 s · memory 3,008 MB · temporary disk 2,048 MB (placeholders until measured) |
 | Visibility timeout (≥ 6 × Lambda timeout) | ingest-queue 720 s · finalize-queue 1,800 s |
 | `maxReceiveCount` | 5 (both queues) |
 | DLQ message retention | 14 days |

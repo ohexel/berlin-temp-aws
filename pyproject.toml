@@ -33,6 +33,10 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src/berlin_temp"]
 
+[tool.uv]
+# A plain `uv sync` installs everything needed for development and tests.
+default-groups = ["dev", "pipeline", "reference"]
+
 [tool.ruff]
 line-length = 100
 
