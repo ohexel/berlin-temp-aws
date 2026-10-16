@@ -17,7 +17,7 @@ Status: draft for review (revision 3) · Scope: version 1 (25-point apparent-tem
 | Gold | Written once per run, by finalize, after the full horizon passes its checks |
 | Static reference build | Separate Lambda, invoked manually, run once |
 | Container images | Two images from one Dockerfile with two build targets: `reference` (for `reference_build`, includes the geospatial libraries) and `pipeline` (all other Lambdas) |
-| Data bucket | One private bucket for bronze/silver/gold; lifecycle: raw GRIB 2 days, silver `forecast_cell` 7 days; static bronze and gold kept until final teardown |
+| Data bucket | One private bucket for bronze/silver/gold; lifecycle: raw GRIB 2 days, silver `forecast_cell` 7 days; static bronze and gold kept until final teardown; unfinished multipart uploads aborted after 1 day |
 | Alerts | SNS e-mail: messages in a DLQ, no publication for 3 h, discover/finalize errors |
 
 ## System overview
