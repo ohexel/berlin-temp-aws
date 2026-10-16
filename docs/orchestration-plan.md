@@ -1,6 +1,6 @@
 # Orchestration plan — Berlin temperature pipeline (AWS)
 
-Status: draft for review (revision 2) · Scope: version 1 (25-point apparent-temperature forecast per PLR, population 65+, PLR names)
+Status: draft for review (revision 3) · Scope: version 1 (25-point apparent-temperature forecast per PLR, population 65+, PLR names)
 
 ## Decisions this plan implements
 
@@ -16,6 +16,8 @@ Status: draft for review (revision 2) · Scope: version 1 (25-point apparent-tem
 | Stale runs | Finalize stops if a newer run is already published |
 | Gold | Written once per run, by finalize, after the full horizon passes its checks |
 | Static reference build | Separate Lambda, invoked manually, run once |
+| Container images | Two images from one Dockerfile with two build targets: `reference` (for `reference_build`, includes the geospatial libraries) and `pipeline` (all other Lambdas) |
+| Data bucket | One private bucket for bronze/silver/gold; lifecycle: raw GRIB 2 days, silver `forecast_cell` 7 days; static bronze and gold kept until final teardown |
 | Alerts | SNS e-mail: messages in a DLQ, no publication for 3 h, discover/finalize errors |
 
 ## System overview
@@ -221,7 +223,7 @@ flowchart TD
 | `berlin-temp-alerts` | SNS topic | E-mail to the budget-alert address |
 | `reference_build` | Lambda, invoked manually | Static bronze → silver reference data, run once |
 
-All Lambdas share one container image with different handlers.
+`reference_build` uses the `reference` image; all other Lambdas share the `pipeline` image with different handlers. Both images are built from one Dockerfile with two build targets.
 
 ## Messages
 
@@ -330,16 +332,19 @@ finalize: {"run_time": "2026-10-13T12:00Z"}
 
 ## Build order
 
-Each step: try it once via the CLI, delete it, then build it with Terraform.
+Each step: try it once via the CLI, delete it, then build it with Terraform. Steps 1 and 2 were built via the CLI first; they are deleted and rebuilt once Terraform is set up.
 
 1. SNS topic + e-mail subscription
 2. DynamoDB table
-3. ECR repository with lifecycle policy, image, `ingest_lead` invoked manually
-4. `ingest-queue` + DLQ + queue trigger
-5. `discover` + schedule (created disabled)
-6. `finalize-queue` + DLQ + `finalize`
-7. `checker` + schedule (created disabled)
-8. Alarms + log retention
+3. Private data bucket with lifecycle rules
+4. ECR repository with lifecycle policy; Dockerfile with two build targets
+5. `reference` image + `reference_build` invoked manually -> static bronze and silver reference data
+6. `pipeline` image + `ingest_lead` invoked manually
+7. `ingest-queue` + DLQ + queue trigger
+8. `discover` + schedule (created disabled)
+9. `finalize-queue` + DLQ + `finalize`
+10. `checker` + schedule (created disabled)
+11. Alarms + log retention
 
 ## Details added with the checker (to confirm)
 
@@ -360,3 +365,7 @@ These fill in the checker decision and were not discussed individually:
 - Timeouts and memory sizes measured on real runs.
 - Current prices for Lambda, SQS, DynamoDB, EventBridge Scheduler, CloudWatch before building.
 - Verify: minimum maximum-concurrency value for SQS triggers.
+- ECR: one repository with two tags, or two repositories.
+- CPU architecture: x86_64 or arm64.
+- GRIB decoder library (suggested: `eccodes`).
+- Libraries for `reference_build` (geospatial, ICON grid file, XLSX).
