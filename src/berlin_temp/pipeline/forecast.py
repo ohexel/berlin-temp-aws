@@ -18,6 +18,21 @@ _KEY_RUN_FORMAT = "%Y%m%dT%H%MZ"
 _LEAD_PATTERN = re.compile(r"PT(\d{3})H00M")
 
 
+def parse_run_label(label: str) -> datetime:
+    """Message form, e.g. 2026-10-13T12:00Z."""
+    return datetime.strptime(label, _MESSAGE_RUN_FORMAT).replace(tzinfo=UTC)
+
+
+def run_label(run_time: datetime) -> str:
+    """Message and DynamoDB form, e.g. 2026-10-13T12:00Z."""
+    return run_time.strftime(_MESSAGE_RUN_FORMAT)
+
+
+def run_key_label(run_time: datetime) -> str:
+    """S3 key form, e.g. 20261013T1200Z."""
+    return run_time.strftime(_KEY_RUN_FORMAT)
+
+
 def format_lead(hours: int) -> str:
     if not 0 <= hours < LEAD_COUNT:
         raise ValueError(f"lead hours must be 0..{LEAD_COUNT - 1}, got {hours}")
@@ -46,13 +61,12 @@ class ForecastKey:
     @classmethod
     def from_message(cls, message: dict) -> ForecastKey:
         """Message: {"run_time": "2026-10-13T12:00Z", "lead": "PT005H00M"}."""
-        run_time = datetime.strptime(message["run_time"], _MESSAGE_RUN_FORMAT).replace(tzinfo=UTC)
-        return cls(run_time, parse_lead(message["lead"]))
+        return cls(parse_run_label(message["run_time"]), parse_lead(message["lead"]))
 
     @property
     def run_label(self) -> str:
         """As written in messages and DynamoDB keys, e.g. 2026-10-13T12:00Z."""
-        return self.run_time.strftime(_MESSAGE_RUN_FORMAT)
+        return run_label(self.run_time)
 
     @property
     def lead_label(self) -> str:
@@ -65,7 +79,7 @@ class ForecastKey:
     @property
     def partition(self) -> str:
         """S3 key fragment, e.g. run=20261013T1200Z/lead=PT005H00M."""
-        return f"run={self.run_time.strftime(_KEY_RUN_FORMAT)}/lead={self.lead_label}"
+        return f"run={run_key_label(self.run_time)}/lead={self.lead_label}"
 
     def field_url(self, indicator: str) -> str:
         if indicator not in INDICATORS:

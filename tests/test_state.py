@@ -188,3 +188,41 @@ def test_delete_lead_item(dynamodb):
         "delete_item", {}, expected_params={"TableName": "t", "Key": ITEM_KEY}
     )
     state.delete_lead_item(dynamodb, "t", KEY)
+
+
+META_KEY = {"PK": {"S": "run#2026-10-13T12:00Z"}, "SK": {"S": "meta"}}
+
+
+def test_is_published(dynamodb):
+    dynamodb.stubber.add_response(
+        "get_item",
+        {"Item": {"published_at": {"S": "2026-10-13T12:55:00+00:00"}}},
+        expected_params={
+            "TableName": "t",
+            "Key": META_KEY,
+            "ProjectionExpression": "published_at",
+            "ConsistentRead": True,
+        },
+    )
+    assert state.is_published(dynamodb, "t", "2026-10-13T12:00Z") is True
+    dynamodb.stubber.add_response("get_item", {})
+    assert state.is_published(dynamodb, "t", "2026-10-13T12:00Z") is False
+
+
+def test_mark_published(dynamodb):
+    now = datetime(2026, 10, 13, 12, 55, tzinfo=UTC)
+    dynamodb.stubber.add_response(
+        "update_item",
+        {},
+        expected_params={
+            "TableName": "t",
+            "Key": META_KEY,
+            "UpdateExpression": "SET published_at = :now, #ttl = if_not_exists(#ttl, :ttl)",
+            "ExpressionAttributeNames": {"#ttl": "ttl"},
+            "ExpressionAttributeValues": {
+                ":now": {"S": "2026-10-13T12:55:00+00:00"},
+                ":ttl": {"N": str(int(now.timestamp()) + 604800)},
+            },
+        },
+    )
+    state.mark_published(dynamodb, "t", "2026-10-13T12:00Z", now)

@@ -12,6 +12,7 @@ from berlin_temp.reference.checks import Expectations, check_reference
 from berlin_temp.reference.geometry import build_bridge, build_mask
 from berlin_temp.reference.icon_grid import build_cells, decompress_bz2, read_icon_grid
 from berlin_temp.reference.lor import parse_plr_geojson
+from berlin_temp.reference.map_geometry import plr_geometry_json
 from berlin_temp.reference.plr_names import parse_plr_names
 from berlin_temp.reference.population import parse_population
 
@@ -21,6 +22,7 @@ BRONZE_PREFIX = "bronze/static"
 POPULATION_FILENAME = "EWR_L21_202512E_Matrix.csv"
 LOR_FILENAME = "lor_planungsraum.geojson"
 GRID_FILENAME = "icon_grid_0047_R19B07_L.nc.bz2"
+GEOMETRY_KEY = "gold/static/plr_geometry.json"
 
 
 @dataclass(frozen=True)
@@ -150,6 +152,11 @@ def run_reference_build(
         run.put(key, body)
         written[key] = {"rows": table.num_rows, "bytes": len(body)}
     run.lap("silver")
+
+    # 5. Dashboard boundaries (static; copied to the dashboard bucket together with the frontend).
+    geometry_body = plr_geometry_json(plr)
+    run.put(GEOMETRY_KEY, geometry_body, "application/json")
+    written[GEOMETRY_KEY] = {"rows": len(plr.plr_id), "bytes": len(geometry_body)}
 
     summary["silver"] = written
     summary["seconds"] = run.seconds

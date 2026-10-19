@@ -78,6 +78,9 @@ def test_end_to_end_with_fake_s3(world, tmp_path):
     assert rows("mask").num_rows == world["expect"].mask_cells
     assert rows("bridge").num_rows == world["expect"].bridge_rows
     assert summary["silver"]["silver/bridge/part.parquet"]["rows"] == world["expect"].bridge_rows
+    geometry = json.loads(s3.objects["gold/static/plr_geometry.json"])
+    assert [area["id"] for area in geometry["areas"]] == rows("plr").column("plr_id").to_pylist()
+    assert geometry["coordinate_system"] == "EPSG:25833"
     assert set(summary["seconds"]) == {
         "download_to_bronze",
         "parse",
@@ -111,3 +114,4 @@ def test_failed_check_writes_bronze_but_no_silver(world, tmp_path):
         )
     assert _silver(s3) == {}
     assert any(key.startswith("bronze/static/") for key in s3.objects)
+    assert "gold/static/plr_geometry.json" not in s3.objects

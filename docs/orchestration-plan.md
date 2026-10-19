@@ -22,6 +22,9 @@ Status: draft for review (revision 3) · Scope: version 1 (25-point apparent-tem
 | GRIB decoder | `eccodes` |
 | `reference` image libraries | shapely, pyproj, openpyxl, netCDF4 (on top of the `pipeline` set: boto3, eccodes, numpy, pandas, pyarrow) |
 | discover | Runs newest first, leads ascending; retention window = current UTC hour and the two before; existing lead items are read with one query per run before any HEAD request to DWD |
+| Gold | `gold/forecast_plr/run=<run>/` (542 × 25 rows: area-weighted temperature and apparent temperature) and `gold/forecast_plr_summary/run=<run>/` (542 rows: highest temperature and highest apparent-minus-air difference with their earliest hour, population, status). No historical comparison in v1 |
+| Publication | Dashboard bucket: frontend and `data/geometry.json` uploaded by hand; per run `data/runs/<run>/summary.json` and `areas/<plr_id>.json`; pointer `data/current.json` written last; long cache for run folders, 60 s for the pointer; no CloudFront invalidation |
+| Map boundaries | Simplified once (20 m, topology preserved) by `reference_build` to `gold/static/plr_geometry.json` |
 | Lead label | DWD-native `PTxxxH00M` (e.g. `PT005H00M`) everywhere: messages, DynamoDB sort key, S3 keys, DWD URLs |
 | Data bucket | One private bucket for bronze/silver/gold; lifecycle: raw GRIB 2 days, silver `forecast_cell` 7 days; static bronze and gold kept until final teardown; unfinished multipart uploads aborted after 1 day |
 | Alerts | SNS e-mail: messages in a DLQ, no publication for 3 h, discover/finalize errors |
@@ -65,7 +68,7 @@ flowchart LR
     FQ --> FIN
     FIN -- "read silver, write gold" --> S3
     FIN -- "published_at" --> DDB
-    FIN -- "dashboard JSON + invalidation" --> WEB
+    FIN -- "dashboard JSON, then pointer" --> WEB
     IQ -. "after 5 failed attempts" .-> IDLQ
     FQ -. "after 5 failed attempts" .-> FDLQ
     IDLQ --> CW
@@ -194,7 +197,7 @@ flowchart TD
         F3{"25 leads × 465 cells,<br/>all from one run?"}
         F4["Area-weight with bridge; join population<br/>and names → gold forecast_plr + summary"]
         F5{"542 PLRs × 25 leads?"}
-        F6["Build dashboard JSON and publish<br/>details: next design topic"]
+        F6["Write run folder to dashboard bucket,<br/>then switch data/current.json"]
         F7["Set published_at"]:::ok
         FS1["Stop: duplicate message"]:::skip
         FS2["Stop: stale run would<br/>replace a newer forecast"]:::skip
@@ -275,10 +278,10 @@ finalize: {"run_time": "2026-10-13T12:00Z"}
 ### finalize (one message at a time)
 
 1. If `published_at` is set for this run, stop (duplicate message).
-2. If a newer run is already published, stop (a late older run must not replace a newer forecast).
+2. If `data/current.json` names a newer run, stop (a late older run must not replace a newer forecast). The pointer is the source of truth for what is published.
 3. Read the 25 silver files; check 25 × 465 complete values from one run.
 4. Load bridge, population and PLR names; aggregate to `gold/forecast_plr/run=…` (13,550 rows) and `gold/forecast_plr_summary/run=…`; check 542 × 25.
-5. Build the dashboard JSON and publish (pointer object, bucket layout, CloudFront invalidation: next design topic).
+5. Write `data/runs/<run>/areas/<plr_id>.json` (542) and `data/runs/<run>/summary.json` to the dashboard bucket (cached for a year: run folders never change), then replace `data/current.json` (cached 60 s). The pointer is written last, so visitors never see a half-written run. No CloudFront invalidation.
 6. Set `published_at`.
 
 ### reference_build (invoked manually, run once)
@@ -287,6 +290,7 @@ finalize: {"run_time": "2026-10-13T12:00Z"}
 2. Parse and build in memory: population (542 rows, rejections classified), PLR names, planning-area geometries (EPSG:25833), ICON cell triangles (all 542,040, EPSG:25833), Berlin mask (cells touching Berlin widened by 5,000 m), PLR/cell area bridge.
 3. Check before writing silver: 542 PLRs; population 540 accepted / 2 rejected; names and population ids match the LOR ids; mask 465 cells; bridge 1,678 rows; every PLR's weights sum to 1; every bridge cell is in the mask. All failed checks are reported together; on failure bronze stays written and silver is not touched.
 4. Write `silver/{plr,population,icon_cell,mask,bridge}/part.parquet` (fixed keys; a re-run overwrites with identical content). Geometries are WKB in EPSG:25833 with a `crs` column.
+5. Write the simplified map boundaries to `gold/static/plr_geometry.json` (20 m, topology preserved, coordinates rounded to 0.1 m).
 
 Event option: `{"plr_layer": "<WFS layer name>"}` skips layer discovery.
 
@@ -324,7 +328,7 @@ Event option: `{"plr_layer": "<WFS layer name>"}` skips layer discovery.
 | discover | DynamoDB put/delete on the table · send to `ingest-queue` |
 | ingest_lead | S3 write `bronze/forecast/` and `silver/forecast_cell/` · read silver reference data · DynamoDB update · consume `ingest-queue` |
 | checker | DynamoDB query/get/update on the table · send to `finalize-queue` |
-| finalize | S3 read `silver/`, write `gold/` · write dashboard bucket · CloudFront invalidation on that one distribution · DynamoDB get/update · consume `finalize-queue` |
+| finalize | S3 read `silver/`, write `gold/forecast_plr*/` · dashboard bucket: read/write `data/`, list (so a missing pointer reads as "not found") · DynamoDB get/update · consume `finalize-queue` |
 | reference_build | S3 read/write `bronze/static/` · write silver reference data |
 
 ## Cost guards
@@ -378,7 +382,6 @@ These fill in the checker decision and were not discussed individually:
 
 ## Open items
 
-- Publication details (pointer object, dashboard bucket layout, CloudFront invalidation) — next design topic.
 - Timeouts and memory sizes measured on real runs.
 - Current prices for Lambda, SQS, DynamoDB, EventBridge Scheduler, CloudWatch before building.
 - Verify: minimum maximum-concurrency value for SQS triggers.

@@ -113,3 +113,31 @@ def create_lead_item(dynamodb, table: str, key: ForecastKey, now: datetime) -> b
 
 def delete_lead_item(dynamodb, table: str, key: ForecastKey) -> None:
     dynamodb.delete_item(TableName=table, Key=lead_item_key(key))
+
+
+def _meta_key(run_label: str) -> dict:
+    return {"PK": {"S": f"run#{run_label}"}, "SK": {"S": "meta"}}
+
+
+def is_published(dynamodb, table: str, run_label: str) -> bool:
+    response = dynamodb.get_item(
+        TableName=table,
+        Key=_meta_key(run_label),
+        ProjectionExpression="published_at",
+        ConsistentRead=True,
+    )
+    return "published_at" in response.get("Item", {})
+
+
+def mark_published(dynamodb, table: str, run_label: str, now: datetime) -> None:
+    """Set published_at on the run's meta item (created if absent, with a 7-day ttl)."""
+    dynamodb.update_item(
+        TableName=table,
+        Key=_meta_key(run_label),
+        UpdateExpression="SET published_at = :now, #ttl = if_not_exists(#ttl, :ttl)",
+        ExpressionAttributeNames={"#ttl": "ttl"},
+        ExpressionAttributeValues={
+            ":now": {"S": now.isoformat(timespec="seconds")},
+            ":ttl": {"N": str(int(now.timestamp()) + LEAD_TTL_SECONDS)},
+        },
+    )

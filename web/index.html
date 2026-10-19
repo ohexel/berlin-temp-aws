@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <meta name="description" content="Forecast temperature and shade apparent temperature for Berlin's 542 planning areas over the next 24 hours.">
+  <title>Berlin temperature atlas · 24-hour forecast</title>
+  <link rel="stylesheet" href="styles.css?v=7">
+  <script src="app.js?v=7" defer></script>
+</head>
+<body>
+  <main id="temperature-dashboard" class="dashboard">
+    <header class="masthead">
+      <div>
+        <p class="eyebrow">DWD forecasts · Berlin planning areas</p>
+        <h1>Berlin, hour by hour.</h1>
+        <p class="introduction">
+          The next 24 hours, neighborhood by neighborhood.
+        </p>
+      </div>
+      <div class="run-status" aria-live="polite">
+        <span class="status-dot" aria-hidden="true"></span>
+        <span id="run-status">Loading the latest complete forecast</span>
+      </div>
+    </header>
+
+    <section class="overview" aria-label="Forecast overview">
+      <article><span class="overview-value" id="area-count">—</span><span>Berlin neighborhoods</span></article>
+      <article><span class="overview-value">24</span><span>forecast hours</span></article>
+    </section>
+
+    <section class="workspace" aria-label="Interactive temperature map and neighborhood detail">
+      <article class="map-panel card">
+        <div class="panel-heading">
+          <div>
+            <p class="eyebrow">542 planning areas</p>
+            <h2>The city at a glance</h2>
+          </div>
+          <label class="metric-control" for="map-metric">
+            Shade by
+            <select id="map-metric">
+              <option value="maximum_apparent_temperature_difference_c">Highest difference between apparent and forecast temperature</option>
+              <option value="maximum_temperature_c">Highest forecast temperature</option>
+              <option value="population_65plus">Residents aged 65+</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="search-box">
+          <label class="visually-hidden" for="area-search">Search for a Berlin neighborhood</label>
+          <svg class="search-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8"></circle><path d="m16 16 4 4"></path></svg>
+          <input id="area-search" type="search" placeholder="Find a neighborhood or PLR ID" autocomplete="off">
+          <div id="search-results" class="search-results" role="listbox" hidden></div>
+        </div>
+
+        <div id="map-wrap" class="map-wrap" aria-busy="true">
+          <svg id="berlin-map" viewBox="0 0 760 620" role="img" aria-label="Berlin planning areas colored by forecast temperature"></svg>
+          <div id="map-loading" class="map-message">Drawing Berlin’s neighborhoods…</div>
+        </div>
+
+        <div class="legend">
+          <span id="legend-low">Cooler</span>
+          <span id="legend-gradient" class="legend-gradient" aria-hidden="true"></span>
+          <span id="legend-high">Warmer</span>
+        </div>
+        <p class="map-hint">Hover to explore · Click to pin · Press Esc to unpin</p>
+      </article>
+
+      <aside id="detail-panel" class="detail-panel card" aria-live="polite">
+        <div id="detail-placeholder" class="detail-placeholder">
+          <span class="placeholder-mark" aria-hidden="true">↖</span>
+          <h2>Choose a neighborhood</h2>
+          <p>Hover over the map or search by name to see its forecast temperature and apparent temperature for the next 24 hours.</p>
+        </div>
+
+        <div id="detail-content" hidden>
+          <div class="detail-heading">
+            <div>
+              <p class="eyebrow" id="detail-plr-id"></p>
+              <h2 id="detail-name"></h2>
+            </div>
+            <button id="pin-toggle" class="pin-toggle" type="button" aria-pressed="false">Pin</button>
+          </div>
+
+          <section class="metrics" aria-label="24-hour neighborhood summary">
+            <article class="metric metric-emphasis">
+              <span>Highest forecast</span>
+              <strong id="metric-maximum">—</strong>
+              <small id="metric-maximum-at">—</small>
+            </article>
+            <article class="metric">
+              <span>Largest apparent − forecast</span>
+              <strong id="metric-difference">—</strong>
+              <small id="metric-difference-at">—</small>
+            </article>
+            <article class="metric">
+              <span>Residents aged 65+</span>
+              <strong id="metric-population">—</strong>
+              <small id="metric-population-total">—</small>
+            </article>
+          </section>
+
+          <section class="chart-section" aria-label="Forecast temperature and apparent temperature">
+            <div class="chart-heading">
+              <div>
+                <p class="eyebrow">This neighborhood · Hourly</p>
+                <h3>The next 24 hours</h3>
+              </div>
+              <span id="chart-date" class="chart-date"></span>
+            </div>
+            <div id="chart-wrap" class="chart-wrap" aria-busy="false">
+              <svg id="temperature-chart" viewBox="0 0 700 410" role="img" aria-label="Forecast temperature and forecast apparent temperature"></svg>
+              <div id="chart-tooltip" class="chart-tooltip" hidden></div>
+              <div id="chart-loading" class="chart-loading" hidden>Loading the forecast…</div>
+            </div>
+            <div class="chart-legend">
+              <span><i class="sample forecast-sample"></i> Forecast temperature</span>
+              <span><i class="sample comparison-sample"></i> Forecast apparent temperature</span>
+            </div>
+            <p id="chart-note" class="history-note" hidden></p>
+          </section>
+        </div>
+      </aside>
+    </section>
+
+    <footer class="page-footer">
+      Temperature: DWD ICON-D2-RUC · Apparent temperature in the shade (no solar radiation) · Population: Amt für Statistik Berlin-Brandenburg · All displayed times: Europe/Berlin.
+    </footer>
+  </main>
+</body>
+</html>
