@@ -21,6 +21,7 @@ Status: draft for review (revision 3) · Scope: version 1 (25-point apparent-tem
 | Lambda CPU architecture | x86_64 (native builds and local tests; arm64 saving is negligible at this scale) |
 | GRIB decoder | `eccodes` |
 | `reference` image libraries | shapely, pyproj, openpyxl, netCDF4 (on top of the `pipeline` set: boto3, eccodes, numpy, pandas, pyarrow) |
+| Lead label | DWD-native `PTxxxH00M` (e.g. `PT005H00M`) everywhere: messages, DynamoDB sort key, S3 keys, DWD URLs |
 | Data bucket | One private bucket for bronze/silver/gold; lifecycle: raw GRIB 2 days, silver `forecast_cell` 7 days; static bronze and gold kept until final teardown; unfinished multipart uploads aborted after 1 day |
 | Alerts | SNS e-mail: messages in a DLQ, no publication for 3 h, discover/finalize errors |
 
@@ -232,7 +233,7 @@ flowchart TD
 ## Messages
 
 ```json
-ingest:   {"run_time": "2026-10-13T12:00Z", "lead": "PT005H"}
+ingest:   {"run_time": "2026-10-13T12:00Z", "lead": "PT005H00M"}
 finalize: {"run_time": "2026-10-13T12:00Z"}
 ```
 
