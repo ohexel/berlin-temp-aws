@@ -78,13 +78,22 @@ def run_reference_build(
 
     # 1. Bronze: the sources exactly as received, plus provenance.
     population_bytes, population_info = downloads.population()
-    sources.require_not_html(population_info.content_type, population_info.source_url)
+    sources.require_not_html(
+        population_info.content_type,
+        population_info.source_url,
+        population_info.resolved_url,
+        population_bytes,
+    )
     key = run.bronze_key("population", POPULATION_FILENAME)
     run.put(key, population_bytes)
-    run.put_provenance(key, population_info)
+    run.put_provenance(
+        key, population_info, published_resource_url=sources.AFS_PUBLISHED_RESOURCE_URL
+    )
 
     names_bytes, names_info = downloads.plr_names()
-    sources.require_not_html(names_info.content_type, names_info.source_url)
+    sources.require_not_html(
+        names_info.content_type, names_info.source_url, names_info.resolved_url, names_bytes
+    )
     key = run.bronze_key("plr_names", sources.PLR_NAMES_FILENAME)
     run.put(key, names_bytes)
     run.put_provenance(key, names_info)

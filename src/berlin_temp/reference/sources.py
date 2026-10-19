@@ -13,8 +13,14 @@ from pathlib import Path
 TIMEOUT_SECONDS = 120
 USER_AGENT = "berlin-temp-aws/0.1"
 
-AFS_POPULATION_URL = (
+# The AfS "published resource" URL (statistik-berlin-brandenburg.de/opendata/...) now answers with
+# an HTML page; the download host below serves the CSV itself.
+AFS_PUBLISHED_RESOURCE_URL = (
     "https://www.statistik-berlin-brandenburg.de/opendata/EWR_L21_202512E_Matrix.csv"
+)
+AFS_POPULATION_URL = (
+    "https://download.statistik-berlin-brandenburg.de/"
+    "c9771e49e9b212b3/f6a9c1df6163/EWR_L21_202512E_Matrix.csv"
 )
 PLR_NAMES_FILENAME = "lor_2021-01-01_k3_uebersicht_id_namen.xlsx"
 PLR_NAMES_URL = (
@@ -85,9 +91,20 @@ def fetch_to_file(url: str, target: Path) -> FetchInfo:
         )
 
 
-def require_not_html(content_type: str | None, url: str) -> None:
-    if content_type and "html" in content_type.lower():
-        raise ValueError(f"{url} returned an HTML page instead of the expected file")
+def require_not_html(
+    content_type: str | None,
+    url: str,
+    resolved_url: str | None = None,
+    content: bytes | None = None,
+) -> None:
+    """Fail if a download is an HTML page (by Content-Type or by its first bytes)."""
+    html_type = bool(content_type) and "html" in content_type.lower()
+    head = (content or b"")[:500].lstrip().lower()
+    if html_type or head.startswith((b"<html", b"<!doctype html")):
+        raise ValueError(
+            f"{url} (resolved to {resolved_url or url}) returned an HTML page "
+            "instead of the expected file"
+        )
 
 
 def _local_name(tag: str) -> str:

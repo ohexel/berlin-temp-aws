@@ -100,3 +100,9 @@ def test_html_response_is_rejected():
     with pytest.raises(ValueError, match="HTML"):
         sources.require_not_html("text/html; charset=utf-8", "https://example.org/x")
     sources.require_not_html("text/csv", "https://example.org/x")
+
+
+def test_require_not_html_checks_content_prefix():
+    with pytest.raises(ValueError, match="HTML page"):
+        sources.require_not_html("text/csv", "u", content=b"  <!DOCTYPE html><html>")
+    sources.require_not_html("text/csv", "u", content=b"a;b\n1;2\n")
