@@ -299,7 +299,7 @@ Event option: `{"plr_layer": "<WFS layer name>"}` skips layer discovery.
 | DLQ message retention | 14 days |
 | Batch size | 1 |
 | Maximum concurrency of queue triggers | ingest 5 · finalize 2 (believed to be the minimum allowed; to verify) |
-| Reserved concurrency | discover 1 · checker 1 |
+| Reserved concurrency | none (the account limit of 10 concurrent executions does not allow reservations; overlapping ticks are harmless: conditional puts in discover, idempotent finalize) |
 
 ## Monitoring
 
