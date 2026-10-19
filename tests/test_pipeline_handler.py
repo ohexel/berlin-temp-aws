@@ -21,11 +21,16 @@ def wired(monkeypatch):
     monkeypatch.setenv("STATE_TABLE", "table")
     monkeypatch.setattr(handler.boto3, "client", lambda name: name)
     monkeypatch.setattr(handler, "_mask_cache", {})
+    monkeypatch.setattr(handler, "_state", {"cold_start": True})
     monkeypatch.setattr(
         handler, "load_mask", lambda s3, bucket: calls.append("mask") or np.array([1])
     )
     monkeypatch.setattr(
-        handler, "run_ingest_lead", lambda *a, **k: calls.append("ingest") or {"cells": 1}
+        handler,
+        "run_ingest_lead",
+        lambda *a, **k: (
+            calls.append("ingest") or {"cells": 1, "seconds": {"download_and_decode": 0.5}}
+        ),
     )
     monkeypatch.setattr(
         handler.state, "mark_done", lambda ddb, table, key: calls.append("done") or "done"
@@ -40,7 +45,7 @@ def wired(monkeypatch):
 
 def test_success(wired):
     result = handler.handler(_event(), None)
-    assert result == {"cells": 1, "state": "done"}
+    assert result == {"cells": 1, "seconds": {"download_and_decode": 0.5}, "state": "done"}
     assert wired == ["mask", "ingest", "done"]
 
 
@@ -88,3 +93,15 @@ def test_bad_message_fails_without_touching_dynamodb(wired):
     with pytest.raises(ValueError):
         handler.handler(_event({"run_time": "2026-10-13T12:00Z", "lead": "PT005H"}), None)
     assert wired == []
+
+
+def test_log_line_has_phase_timings_and_cold_start_flag(wired, caplog):
+    caplog.set_level("INFO", logger=handler.LOGGER.name)
+    handler.handler(_event(), None)
+    handler.handler(_event(), None)
+    lines = [json.loads(r.getMessage()) for r in caplog.records if r.getMessage().startswith("{")]
+    first, second = lines
+    assert (first["cold_start"], second["cold_start"]) == (True, False)
+    assert set(first["phases"]) == {"mask_load", "download_and_decode", "state_update"}
+    assert set(second["phases"]) == {"download_and_decode", "state_update"}  # mask is cached
+    assert first["outcome"] == "done" and first["receive_count"] == 1
