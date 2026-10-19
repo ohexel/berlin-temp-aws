@@ -115,3 +115,76 @@ def test_record_failure_ignores_done_or_missing_item(dynamodb):
 def test_long_errors_are_truncated(dynamodb):
     dynamodb.stubber.add_response("update_item", {})
     state.record_failure(dynamodb, "t", KEY, 1, ValueError("x" * 5000))
+
+
+def test_lead_labels_for_run(dynamodb):
+    dynamodb.stubber.add_response(
+        "query",
+        {
+            "Items": [
+                {"SK": {"S": "lead#PT000H00M"}},
+                {"SK": {"S": "meta"}},
+                {"SK": {"S": "lead#PT001H00M"}},
+            ]
+        },
+    )
+    assert state.lead_labels_for_run(dynamodb, "t", "2026-10-13T12:00Z") == {
+        "PT000H00M",
+        "PT001H00M",
+    }
+
+
+def test_lead_labels_for_run_follows_pagination(dynamodb):
+    last = {"PK": {"S": "p"}, "SK": {"S": "lead#PT000H00M"}}
+    dynamodb.stubber.add_response(
+        "query", {"Items": [{"SK": {"S": "lead#PT000H00M"}}], "LastEvaluatedKey": last}
+    )
+    dynamodb.stubber.add_response(
+        "query",
+        {"Items": [{"SK": {"S": "lead#PT001H00M"}}]},
+        expected_params={
+            "TableName": "t",
+            "KeyConditionExpression": "PK = :pk",
+            "ExpressionAttributeValues": {":pk": {"S": "run#2026-10-13T12:00Z"}},
+            "ProjectionExpression": "SK",
+            "ConsistentRead": True,
+            "ExclusiveStartKey": last,
+        },
+    )
+    assert state.lead_labels_for_run(dynamodb, "t", "2026-10-13T12:00Z") == {
+        "PT000H00M",
+        "PT001H00M",
+    }
+
+
+def test_create_lead_item(dynamodb):
+    now = datetime(2026, 10, 13, 12, 31, tzinfo=UTC)
+    dynamodb.stubber.add_response(
+        "put_item",
+        {},
+        expected_params={
+            "TableName": "t",
+            "Item": {
+                **ITEM_KEY,
+                "status": {"S": "QUEUED"},
+                "queued_at": {"S": "2026-10-13T12:31:00+00:00"},
+                "ttl": {"N": str(int(now.timestamp()) + 604800)},
+            },
+            "ConditionExpression": "attribute_not_exists(PK)",
+        },
+    )
+    assert state.create_lead_item(dynamodb, "t", KEY, now) is True
+
+
+def test_create_lead_item_that_exists(dynamodb):
+    dynamodb.stubber.add_client_error(
+        "put_item", service_error_code="ConditionalCheckFailedException"
+    )
+    assert state.create_lead_item(dynamodb, "t", KEY, datetime.now(UTC)) is False
+
+
+def test_delete_lead_item(dynamodb):
+    dynamodb.stubber.add_response(
+        "delete_item", {}, expected_params={"TableName": "t", "Key": ITEM_KEY}
+    )
+    state.delete_lead_item(dynamodb, "t", KEY)

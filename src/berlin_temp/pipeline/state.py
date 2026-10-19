@@ -66,3 +66,50 @@ def record_failure(
         )
     except dynamodb.exceptions.ConditionalCheckFailedException:
         LOGGER.warning("failure not recorded: lead item missing or already DONE")
+
+
+LEAD_TTL_SECONDS = 7 * 24 * 3600
+
+
+def lead_labels_for_run(dynamodb, table: str, run_label: str) -> set[str]:
+    """Leads of a run that already have an item (any status)."""
+    labels: set[str] = set()
+    request = {
+        "TableName": table,
+        "KeyConditionExpression": "PK = :pk",
+        "ExpressionAttributeValues": {":pk": {"S": f"run#{run_label}"}},
+        "ProjectionExpression": "SK",
+        "ConsistentRead": True,
+    }
+    while True:
+        response = dynamodb.query(**request)
+        for item in response["Items"]:
+            sort_key = item["SK"]["S"]
+            if sort_key.startswith("lead#"):
+                labels.add(sort_key.removeprefix("lead#"))
+        if "LastEvaluatedKey" not in response:
+            return labels
+        request["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+
+
+def create_lead_item(dynamodb, table: str, key: ForecastKey, now: datetime) -> bool:
+    """Create the QUEUED item if absent. False means it already exists."""
+    ttl = int(now.timestamp()) + LEAD_TTL_SECONDS
+    try:
+        dynamodb.put_item(
+            TableName=table,
+            Item={
+                **lead_item_key(key),
+                "status": {"S": "QUEUED"},
+                "queued_at": {"S": now.isoformat(timespec="seconds")},
+                "ttl": {"N": str(ttl)},
+            },
+            ConditionExpression="attribute_not_exists(PK)",
+        )
+        return True
+    except dynamodb.exceptions.ConditionalCheckFailedException:
+        return False
+
+
+def delete_lead_item(dynamodb, table: str, key: ForecastKey) -> None:
+    dynamodb.delete_item(TableName=table, Key=lead_item_key(key))

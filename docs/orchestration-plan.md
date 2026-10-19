@@ -21,6 +21,7 @@ Status: draft for review (revision 3) · Scope: version 1 (25-point apparent-tem
 | Lambda CPU architecture | x86_64 (native builds and local tests; arm64 saving is negligible at this scale) |
 | GRIB decoder | `eccodes` |
 | `reference` image libraries | shapely, pyproj, openpyxl, netCDF4 (on top of the `pipeline` set: boto3, eccodes, numpy, pandas, pyarrow) |
+| discover | Runs newest first, leads ascending; retention window = current UTC hour and the two before; existing lead items are read with one query per run before any HEAD request to DWD |
 | Lead label | DWD-native `PTxxxH00M` (e.g. `PT005H00M`) everywhere: messages, DynamoDB sort key, S3 keys, DWD URLs |
 | Data bucket | One private bucket for bronze/silver/gold; lifecycle: raw GRIB 2 days, silver `forecast_cell` 7 days; static bronze and gold kept until final teardown; unfinished multipart uploads aborted after 1 day |
 | Alerts | SNS e-mail: messages in a DLQ, no publication for 3 h, discover/finalize errors |
@@ -248,9 +249,10 @@ finalize: {"run_time": "2026-10-13T12:00Z"}
 
 ### discover (every 5 minutes, :30–:55)
 
-1. List the 3 most recent runs from the temperature directory listing; ignore runs outside the retention window.
-2. For each lead, check that all 4 indicator files exist.
-3. For at most 5 new pairs per tick: create the lead item only if it does not exist (status QUEUED); on success, send the ingest message; if sending fails, delete the item so the next tick retries.
+1. List the runs from the `T_2M` directory listing, newest first. Keep runs from the current UTC hour and the two hours before it (the retention window, the same window the checker uses), at most 3.
+2. Per run, newest first: read the run's existing lead items with one DynamoDB query. Leads that already have an item are skipped without any request to DWD.
+3. HEAD-check the 4 indicator files for the remaining leads (in parallel); leads with a missing file are skipped.
+4. Take the ready leads in ascending order, at most 5 new pairs per tick across all runs: create the lead item only if it does not exist (status QUEUED, `ttl` 7 days); on success, send the ingest message. If sending fails, delete the item (so the next tick retries) and fail the tick.
 
 ### ingest_lead (one message at a time)
 
