@@ -15,6 +15,7 @@ dev = [
 pipeline = [
     "boto3",
     "eccodes",
+    "eccodeslib",
     "numpy",
     "pandas",
     "pyarrow",
