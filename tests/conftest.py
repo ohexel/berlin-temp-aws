@@ -72,3 +72,11 @@ def world():
         "expect": expect,
         "naive_mask": naive_mask,
     }
+
+
+@pytest.fixture(autouse=True)
+def no_retry_pauses(monkeypatch):
+    """Retries must not slow the suite down; tests that check the pauses patch this again."""
+    from berlin_temp.reference import sources
+
+    monkeypatch.setattr(sources, "sleep", lambda seconds: None)

@@ -207,6 +207,49 @@ def test_file_exists(monkeypatch, outcome, expected):
     assert discover.file_exists("https://example.org/x") is expected
 
 
+def test_file_exists_retries_a_reset_and_then_succeeds(monkeypatch):
+    attempts = []
+
+    def fake_urlopen(request, timeout):
+        attempts.append(1)
+        if len(attempts) < 3:
+            raise urllib.error.URLError(ConnectionResetError(104, "reset"))
+        return _Response(200)
+
+    monkeypatch.setattr(discover.urllib.request, "urlopen", fake_urlopen)
+    assert discover.file_exists("https://example.org/x") is True
+    assert len(attempts) == 3
+
+
+def test_file_exists_after_three_resets_is_not_ready_and_logged(monkeypatch, caplog):
+    attempts = []
+
+    def fake_urlopen(request, timeout):
+        attempts.append(1)
+        raise ConnectionResetError(104, "reset")
+
+    monkeypatch.setattr(discover.urllib.request, "urlopen", fake_urlopen)
+    assert discover.file_exists("https://example.org/x") is False
+    assert len(attempts) == 3
+    assert "treating as not ready" in caplog.text
+
+
+def test_file_exists_does_not_retry_404(monkeypatch):
+    attempts = []
+
+    def fake_urlopen(request, timeout):
+        attempts.append(1)
+        raise urllib.error.HTTPError("u", 404, "nf", None, None)
+
+    monkeypatch.setattr(discover.urllib.request, "urlopen", fake_urlopen)
+    assert discover.file_exists("https://example.org/x") is False
+    assert len(attempts) == 1
+
+
+def test_head_requests_use_four_parallel_workers():
+    assert discover.HEAD_WORKERS == 4
+
+
 def test_unexpected_http_errors_are_logged(monkeypatch, caplog):
     def fake_urlopen(request, timeout):
         raise urllib.error.HTTPError("u", 503, "busy", None, None)

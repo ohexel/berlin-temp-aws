@@ -2,16 +2,29 @@
 
 import hashlib
 import json
+import logging
 import re
+import ssl
+import urllib.error
 import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
+from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from random import uniform
+from time import sleep
+
+LOGGER = logging.getLogger(__name__)
 
 TIMEOUT_SECONDS = 120
 USER_AGENT = "berlin-temp-aws/0.1"
+
+# Gentle retry for connection-level failures: two retries (three attempts), each after a pause
+# of 2 s and 5 s, randomised by +/-50 % so parallel workers do not retry in lockstep.
+RETRY_PAUSES_SECONDS = (2.0, 5.0)
+RETRY_JITTER = 0.5
 
 # The AfS "published resource" URL (statistik-berlin-brandenburg.de/opendata/...) now answers with
 # an HTML page; the download host below serves the CSV itself.
@@ -49,6 +62,41 @@ class FetchInfo:
         return json.dumps({**asdict(self), **extra}, indent=2, sort_keys=True).encode()
 
 
+def is_connection_error(error: BaseException) -> bool:
+    """Connection reset, timeout or TLS handshake failure (not HTTP answers or bad certificates)."""
+    if isinstance(error, urllib.error.HTTPError):
+        return False
+    if isinstance(error, urllib.error.URLError):
+        error = error.reason  # may be an exception or a plain string
+    if isinstance(error, ssl.SSLCertVerificationError):
+        return False
+    return isinstance(error, ConnectionError | TimeoutError | ssl.SSLError)
+
+
+def with_retries[T](call: Callable[[], T], what: str) -> T:
+    """Call once, then retry after each pause in RETRY_PAUSES_SECONDS if it fails to connect.
+
+    Every retry is logged. After the last attempt, or for any other error, the error is raised.
+    """
+    for attempt, pause in enumerate((*RETRY_PAUSES_SECONDS, None), start=1):
+        try:
+            return call()
+        except Exception as error:
+            if pause is None or not is_connection_error(error):
+                raise
+            delay = pause * uniform(1 - RETRY_JITTER, 1 + RETRY_JITTER)
+            LOGGER.warning(
+                "%s failed (%s); retry %d of %d in %.1f s",
+                what,
+                error,
+                attempt,
+                len(RETRY_PAUSES_SECONDS),
+                delay,
+            )
+            sleep(delay)
+    raise AssertionError("unreachable")  # the last pause is None, so the loop always returns/raises
+
+
 def _request(url: str) -> urllib.request.Request:
     return urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Accept": "*/*"})
 
@@ -56,39 +104,47 @@ def _request(url: str) -> urllib.request.Request:
 def fetch(url: str, params: dict[str, str] | None = None) -> tuple[bytes, FetchInfo]:
     """Download a small file into memory."""
     full_url = url if not params else f"{url}?{urllib.parse.urlencode(params)}"
-    with urllib.request.urlopen(_request(full_url), timeout=TIMEOUT_SECONDS) as response:
-        content = response.read()
-        info = FetchInfo(
-            source_url=full_url,
-            resolved_url=response.geturl(),
-            http_status=response.status,
-            content_type=response.headers.get("Content-Type"),
-            sha256=hashlib.sha256(content).hexdigest(),
-            size_bytes=len(content),
-            retrieved_at_utc=datetime.now(UTC).isoformat(timespec="seconds"),
-        )
-    return content, info
+
+    def download() -> tuple[bytes, FetchInfo]:
+        with urllib.request.urlopen(_request(full_url), timeout=TIMEOUT_SECONDS) as response:
+            content = response.read()
+            info = FetchInfo(
+                source_url=full_url,
+                resolved_url=response.geturl(),
+                http_status=response.status,
+                content_type=response.headers.get("Content-Type"),
+                sha256=hashlib.sha256(content).hexdigest(),
+                size_bytes=len(content),
+                retrieved_at_utc=datetime.now(UTC).isoformat(timespec="seconds"),
+            )
+        return content, info
+
+    return with_retries(download, f"GET {full_url}")
 
 
 def fetch_to_file(url: str, target: Path) -> FetchInfo:
-    """Stream a large file to disk."""
-    digest = hashlib.sha256()
-    size = 0
-    with urllib.request.urlopen(_request(url), timeout=TIMEOUT_SECONDS) as response:
-        with target.open("wb") as writer:
-            while chunk := response.read(1024 * 1024):
-                writer.write(chunk)
-                digest.update(chunk)
-                size += len(chunk)
-        return FetchInfo(
-            source_url=url,
-            resolved_url=response.geturl(),
-            http_status=response.status,
-            content_type=response.headers.get("Content-Type"),
-            sha256=digest.hexdigest(),
-            size_bytes=size,
-            retrieved_at_utc=datetime.now(UTC).isoformat(timespec="seconds"),
-        )
+    """Stream a large file to disk. A retry starts the download again and overwrites the file."""
+
+    def download() -> FetchInfo:
+        digest = hashlib.sha256()
+        size = 0
+        with urllib.request.urlopen(_request(url), timeout=TIMEOUT_SECONDS) as response:
+            with target.open("wb") as writer:
+                while chunk := response.read(1024 * 1024):
+                    writer.write(chunk)
+                    digest.update(chunk)
+                    size += len(chunk)
+            return FetchInfo(
+                source_url=url,
+                resolved_url=response.geturl(),
+                http_status=response.status,
+                content_type=response.headers.get("Content-Type"),
+                sha256=digest.hexdigest(),
+                size_bytes=size,
+                retrieved_at_utc=datetime.now(UTC).isoformat(timespec="seconds"),
+            )
+
+    return with_retries(download, f"GET {url}")
 
 
 def require_not_html(

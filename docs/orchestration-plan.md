@@ -22,6 +22,8 @@ Status: draft for review (revision 3) · Scope: version 1 (25-point apparent-tem
 | GRIB decoder | `eccodes` |
 | `reference` image libraries | shapely, pyproj, openpyxl, netCDF4 (on top of the `pipeline` set: boto3, eccodes, numpy, pandas, pyarrow) |
 | discover | Runs newest first, leads ascending; retention window = current UTC hour and the two before; existing lead items are read with one query per run before any HEAD request to DWD |
+| Tick times | discover fires at :34, :39 … :59 UTC (six ticks, 5 new leads each, 30 slots for 25 leads). DWD publishes a run's first lead at about :30 and the last at about :40, so the first tick is likely to find leads |
+| Connection retries | Calls to DWD (directory listing, HEAD, GRIB download) and the other source downloads retry only connection-level failures (reset, timeout, TLS handshake failure; not HTTP answers, not certificate errors): two retries after about 2 s and 5 s, each randomised by +/-50 %. Every retry is logged. HEAD checks use 4 parallel workers (was 8). No time budget per tick and no change of the 5-lead cap |
 | Gold | `gold/forecast_plr/run=<run>/` (542 × 25 rows: area-weighted temperature and apparent temperature) and `gold/forecast_plr_summary/run=<run>/` (542 rows: highest temperature and highest apparent-minus-air difference with their earliest hour, population, status). No historical comparison in v1 |
 | Publication | Dashboard bucket: frontend and `data/geometry.json` uploaded by hand; per run `data/runs/<run>/summary.json` and `areas/<plr_id>.json`; pointer `data/current.json` written last; long cache for run folders, 60 s for the pointer; no CloudFront invalidation |
 | Map boundaries | Simplified once (20 m, topology preserved) by `reference_build` to `gold/static/plr_geometry.json` |
@@ -38,7 +40,7 @@ flowchart LR
     classDef ext fill:#fff7e0,stroke:#b8860b,color:#5c4300
 
     DWD["DWD open data<br/>ICON-D2-RUC GRIB2"]:::ext
-    SCHED1(["Scheduler<br/>discover: :30–:55 every 5 min"])
+    SCHED1(["Scheduler<br/>discover: :34–:59 every 5 min"])
     SCHED2(["Scheduler<br/>checker: every 5 min"])
     DISC["discover<br/>Lambda"]
     CHK["checker<br/>Lambda"]
@@ -91,7 +93,7 @@ flowchart TD
     classDef fail fill:#fde2e2,stroke:#c0392b,color:#7b1d1d
     classDef store fill:#eef1f7,stroke:#5b6b8c,color:#2d3a55
 
-    SCHED(["discover tick<br/>:30, :35 … :55 UTC<br/>only while enabled"])
+    SCHED(["discover tick<br/>:34, :39 … :59 UTC<br/>only while enabled"])
 
     subgraph DISCOVER["discover — every 5 minutes"]
         D1["List the 3 most recent DWD runs"]
@@ -220,7 +222,7 @@ flowchart TD
 
 | Name | Type | Purpose |
 |---|---|---|
-| `berlin-temp-discover` | EventBridge Scheduler | Fires at :30, :35 … :55 each hour (UTC). Created **disabled**; enabled only for tests and the 24–48 h run. |
+| `berlin-temp-discover` | EventBridge Scheduler | Fires at :34, :39 … :59 each hour (UTC). Created **disabled**; enabled only for tests and the 24–48 h run. |
 | `discover` | Lambda | Finds ready (run, lead) pairs and queues new ones |
 | `ingest-queue` / `ingest-dlq` | SQS | One message per (run, lead); after 5 failed attempts to the DLQ |
 | `ingest_lead` | Lambda (triggered by `ingest-queue`) | bronze GRIB → silver `forecast_cell`; marks the lead DONE |
@@ -250,11 +252,11 @@ finalize: {"run_time": "2026-10-13T12:00Z"}
 
 ## Step-by-step behavior
 
-### discover (every 5 minutes, :30–:55)
+### discover (every 5 minutes, :34–:59)
 
 1. List the runs from the `T_2M` directory listing, newest first. Keep runs from the current UTC hour and the two hours before it (the retention window, the same window the checker uses), at most 3.
 2. Per run, newest first: read the run's existing lead items with one DynamoDB query. Leads that already have an item are skipped without any request to DWD.
-3. HEAD-check the 4 indicator files for the remaining leads (in parallel); leads with a missing file are skipped.
+3. HEAD-check the 4 indicator files for the remaining leads (4 in parallel); leads with a missing file are skipped. A connection reset or timeout is retried first (see the decision "Connection retries"); if it still fails, the file counts as not ready and a warning is logged.
 4. Take the ready leads in ascending order, at most 5 new pairs per tick across all runs: create the lead item only if it does not exist (status QUEUED, `ttl` 7 days); on success, send the ingest message. If sending fails, delete the item (so the next tick retries) and fail the tick.
 
 ### ingest_lead (one message at a time)

@@ -26,7 +26,7 @@ MAX_RUNS = 3
 WINDOW_HOURS_BEFORE_CURRENT = 2  # current UTC hour and the two before it
 MAX_NEW_PAIRS_PER_TICK = 5
 HEAD_TIMEOUT_SECONDS = 10
-HEAD_WORKERS = 8
+HEAD_WORKERS = 4  # fewer parallel connections to DWD (was 8)
 _RUN_PATTERN = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}")
 
 
@@ -44,16 +44,23 @@ def list_runs() -> list[datetime]:
 
 
 def file_exists(url: str) -> bool:
-    """HEAD request. 404 means "not published yet"; any other problem is logged and also false."""
+    """HEAD request. 404 means "not published yet"; any other problem is logged and also false.
+
+    Connection resets and timeouts are retried first (see sources.with_retries).
+    """
     request = urllib.request.Request(url, method="HEAD", headers={"User-Agent": sources.USER_AGENT})
-    try:
+
+    def head() -> bool:
         with urllib.request.urlopen(request, timeout=HEAD_TIMEOUT_SECONDS) as response:
             return response.status == 200
+
+    try:
+        return sources.with_retries(head, f"HEAD {url}")
     except urllib.error.HTTPError as error:
         if error.code != 404:
             LOGGER.warning("HEAD %s answered %s; treating as not ready", url, error.code)
         return False
-    except (urllib.error.URLError, TimeoutError) as error:
+    except (urllib.error.URLError, ConnectionError, TimeoutError) as error:
         LOGGER.warning("HEAD %s failed (%s); treating as not ready", url, error)
         return False
 
