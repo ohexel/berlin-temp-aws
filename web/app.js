@@ -331,7 +331,7 @@ function metricLabel(metric, value) {
   if (!Number.isFinite(value)) return "value unavailable";
   if (metric === "population_65plus") return `${formatInteger(value)} residents aged 65 and older`;
   if (metric === "maximum_apparent_temperature_difference_c") {
-    return `highest apparent-minus-forecast difference ${formatSignedTemperature(value)}`;
+    return `largest apparent-minus-forecast difference ${formatSignedTemperature(value)}`;
   }
   return `highest forecast ${formatTemperature(value)}`;
 }

@@ -108,8 +108,11 @@ def summarize(forecast: pd.DataFrame, plr: pd.DataFrame, population: pd.DataFram
     frame = forecast.assign(
         apparent_minus_air_c=forecast["apparent_temperature_c"] - forecast["temperature_c"]
     )
+    frame["apparent_minus_air_magnitude_c"] = frame["apparent_minus_air_c"].abs()
     hottest = _first_by(frame, "temperature_c")
-    widest = _first_by(frame, "apparent_minus_air_c")
+    # The hour with the largest difference in either direction; the signed value of that hour is
+    # reported (negative = it feels colder than the air). Equal magnitudes go to the earliest hour.
+    widest = _first_by(frame, "apparent_minus_air_magnitude_c")
     summary = pd.DataFrame(
         {
             "max_temperature_c": hottest["temperature_c"],

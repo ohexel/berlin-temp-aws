@@ -2,6 +2,7 @@ import io
 import json
 from datetime import UTC, datetime, timedelta
 
+import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
@@ -26,9 +27,14 @@ def temperature(cell: int, hours: int) -> float:
     return 10.0 + hours + cell * 0.1
 
 
+# Apparent minus air is -1.0 everywhere except for these changes, which give every area one
+# hour with the unique largest magnitude: A -5.0 at lead 7 (negative), B +1.5 at lead 20,
+# C +1.25 at lead 5 (0.75 * (-1.0 + 3.0) + 0.25 * -1.0).
+CHANGES = {(10, 7): -4.0, (11, 7): -4.0, (12, 20): 2.5, (13, 5): 3.0}
+
+
 def apparent(cell: int, hours: int) -> float:
-    bump = 3.0 if (cell == 13 and hours in (5, 9)) else 0.0  # C's widest gap: tie at 5 and 9
-    return temperature(cell, hours) - 2.0 + bump
+    return temperature(cell, hours) - 1.0 + CHANGES.get((cell, hours), 0.0)
 
 
 class NoSuchKey(Exception):
@@ -148,8 +154,13 @@ def test_publishes_gold_and_dashboard():
         (temperature(10, 24) + temperature(11, 24)) / 2, 2
     )
     assert areas["A"]["maximum_temperature_at_berlin"] == "2026-10-20T16:00"
-    # C: apparent - air = -2 + 0.75 * 3 = +0.25 at leads 5 and 9; the earliest wins.
-    assert areas["C"]["maximum_apparent_temperature_difference_c"] == 0.25
+    # Largest difference by magnitude, with its sign: A feels 5.0 colder at lead 7 (not the
+    # plateau of -1.0), B +1.5 at lead 20, C +1.25 at lead 5.
+    assert areas["A"]["maximum_apparent_temperature_difference_c"] == -5.0
+    assert areas["A"]["maximum_apparent_temperature_difference_at_berlin"] == "2026-10-19T23:00"
+    assert areas["B"]["maximum_apparent_temperature_difference_c"] == 1.5
+    assert areas["B"]["maximum_apparent_temperature_difference_at_berlin"] == "2026-10-20T12:00"
+    assert areas["C"]["maximum_apparent_temperature_difference_c"] == 1.25
     assert areas["C"]["maximum_apparent_temperature_difference_at_berlin"] == "2026-10-19T21:00"
     assert (areas["A"]["population_status"], areas["A"]["population_65plus"]) == ("available", 250)
     assert areas["B"]["population_status"] == "rejected_source_record"
@@ -238,3 +249,47 @@ def test_berlin_time_across_the_autumn_clock_change():
     run_time = datetime(2026, 10, 25, 0, 0, tzinfo=UTC)  # clocks go back at 01:00 UTC
     stamps = [finalize._berlin(run_time + timedelta(hours=h)) for h in range(3)]
     assert stamps == ["2026-10-25T02:00", "2026-10-25T02:00", "2026-10-25T03:00"]
+
+
+def _summary_for(differences: list[float]):
+    """summarize() for one area whose air is 10.0 and whose apparent temperature is 10.0 + d."""
+    hours = range(len(differences))
+    forecast = pd.DataFrame(
+        {
+            "plr_id": "P",
+            "lead": [f"PT{h:03d}H00M" for h in hours],
+            "valid_time_utc": [RUN + timedelta(hours=h) for h in hours],
+            "temperature_c": 10.0,
+            "apparent_temperature_c": [10.0 + d for d in differences],
+        }
+    )
+    plr = pd.DataFrame({"plr_id": ["P"], "plr_name": ["Pp"]})
+    population = pd.DataFrame(
+        {
+            "plr_id": ["P"],
+            "population_total": [100],
+            "population_65plus": [20],
+            "rejection_reason": [None],
+        }
+    )
+    return finalize.summarize(forecast, plr, population).iloc[0]
+
+
+def test_largest_difference_is_by_magnitude_and_keeps_its_sign():
+    row = _summary_for([1.0, -3.0, 2.0])
+    assert row.max_apparent_minus_air_c == -3.0
+    assert row.max_apparent_minus_air_at_utc == RUN + timedelta(hours=1)
+
+
+def test_equal_magnitudes_go_to_the_earliest_hour():
+    positive_first = _summary_for([0.5, 2.0, -2.0, 2.0])
+    assert positive_first.max_apparent_minus_air_c == 2.0
+    assert positive_first.max_apparent_minus_air_at_utc == RUN + timedelta(hours=1)
+    negative_first = _summary_for([0.5, -2.0, 2.0, -2.0])
+    assert negative_first.max_apparent_minus_air_c == -2.0
+    assert negative_first.max_apparent_minus_air_at_utc == RUN + timedelta(hours=1)
+
+
+def test_all_negative_differences_report_the_most_negative_hour():
+    row = _summary_for([-1.0, -4.0, -2.0])
+    assert row.max_apparent_minus_air_c == -4.0
