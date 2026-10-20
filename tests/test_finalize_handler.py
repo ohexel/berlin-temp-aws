@@ -14,7 +14,7 @@ def test_handler(monkeypatch):
 
     for name, value in (("DATA_BUCKET", "d"), ("DASHBOARD_BUCKET", "w"), ("STATE_TABLE", "t")):
         monkeypatch.setenv(name, value)
-    monkeypatch.setattr(finalize_handler.boto3, "client", lambda name: name)
+    monkeypatch.setattr(finalize_handler.boto3, "client", lambda name, **kwargs: name)
     monkeypatch.setattr(finalize_handler, "run_finalize", fake_run)
 
     event = {"Records": [{"body": json.dumps({"run_time": "2026-10-19T14:00Z"})}]}
