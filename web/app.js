@@ -27,7 +27,71 @@ const elements = {};
 
 // Forecast-temperature map: the colour scale covers at least this many degrees, centred on the
 // median, so that small differences between areas get only a small part of the scale.
-const MIN_TEMPERATURE_SPAN_C = 4;
+const MIN_TEMPERATURE_SPAN_C = 2;
+
+// Prognoseraum names (58), keyed by the first four digits of the planning-area ID. Copied from
+// sheet LOR_2023_PGR of lor_2021-01-01_k3_uebersicht_id_namen.xlsx (the workbook reference_build
+// downloads). Shown as a prefix so that areas are recognisable without knowing the PLR names.
+const PROGNOSERAUM_NAMES = {
+  "0110": "Zentrum",
+  "0120": "Moabit",
+  "0130": "Gesundbrunnen",
+  "0140": "Wedding",
+  "0210": "Kreuzberg Nord",
+  "0220": "Kreuzberg Süd",
+  "0230": "Kreuzberg Ost",
+  "0240": "Friedrichshain West",
+  "0250": "Friedrichshain Ost",
+  "0310": "Buch",
+  "0320": "Nördliches Pankow",
+  "0330": "Nördliches Weißensee",
+  "0340": "Südliches Pankow",
+  "0350": "Südliches Weißensee",
+  "0360": "Nördlicher Prenzlauer Berg",
+  "0370": "Südlicher Prenzlauer Berg",
+  "0410": "Charlottenburg Nord",
+  "0420": "Charlottenburg West",
+  "0430": "Charlottenburg Zentrum",
+  "0440": "Wilmersdorf Süd",
+  "0450": "Wilmersdorf Zentrum",
+  "0510": "Spandau Mitte / Nord",
+  "0520": "Wilhelmstadt / Staaken",
+  "0530": "Haselhorst / Siemensstadt",
+  "0540": "Gatow / Kladow",
+  "0610": "Steglitz",
+  "0620": "Lankwitz/Lichterfelde Ost",
+  "0630": "Zehlendorf Süd/Lichterfelde West",
+  "0640": "Zehlendorf Nord/Wannsee",
+  "0710": "Schöneberg Nord",
+  "0720": "Schöneberg Süd",
+  "0730": "Friedenau",
+  "0740": "Tempelhof",
+  "0750": "Mariendorf",
+  "0760": "Marienfelde / Lichtenrade",
+  "0810": "Neukölln",
+  "0820": "Britz/Buckow",
+  "0830": "Gropiusstadt",
+  "0840": "Buckow Nord/Rudow",
+  "0910": "Treptow-Köpenick 1",
+  "0920": "Treptow-Köpenick 2",
+  "0930": "Treptow-Köpenick 3",
+  "0940": "Treptow-Köpenick 4",
+  "0950": "Treptow-Köpenick 5",
+  "1010": "Marzahn",
+  "1020": "Hellersdorf",
+  "1030": "Biesdorf",
+  "1040": "Kaulsdorf/Mahlsdorf",
+  "1110": "Hohenschönhausen Nord",
+  "1120": "Hohenschönhausen Süd",
+  "1130": "Lichtenberg Nord",
+  "1140": "Lichtenberg Mitte",
+  "1150": "Lichtenberg Süd",
+  "1210": "Reinickendorf Ost",
+  "1220": "Tegel",
+  "1240": "Grüner Norden",
+  "1250": "Wittenau/Borsigwalde",
+  "1260": "Märkisches Viertel",
+};
 
 document.addEventListener("DOMContentLoaded", initialize);
 
@@ -105,7 +169,7 @@ function joinAreas(summary, geometry) {
     if (!area.id || !area.name || !shapes.has(area.id)) {
       throw new Error(`Planning area ${area.id || "?"} is missing its name or boundary.`);
     }
-    return { ...area, geometry: shapes.get(area.id) };
+    return { ...area, label: areaLabel(area), geometry: shapes.get(area.id) };
   });
 }
 
@@ -123,7 +187,7 @@ function drawMap() {
       role: "button",
       tabindex: index === 0 ? "0" : "-1",
       "data-plr-id": area.id,
-      "aria-label": `${area.name}, PLR ${area.id}`,
+      "aria-label": `${area.label}, PLR ${area.id}`,
     });
     path.addEventListener("pointerenter", () => scheduleArea(area.id));
     path.addEventListener("focus", () => selectArea(area.id));
@@ -208,7 +272,7 @@ function renderSummary(area) {
   elements["detail-placeholder"].hidden = true;
   elements["detail-content"].hidden = false;
   elements["detail-plr-id"].textContent = `Planning area ${area.id}`;
-  elements["detail-name"].textContent = area.name;
+  elements["detail-name"].textContent = area.label;
   elements["pin-toggle"].setAttribute("aria-pressed", String(state.pinned));
   elements["pin-toggle"].textContent = state.pinned ? "Pinned" : "Pin";
   elements["metric-maximum"].textContent = formatTemperature(area.maximum_temperature_c);
@@ -251,7 +315,7 @@ function updateSearchResults() {
     return;
   }
   const matches = state.areas
-    .filter(area => normalizeText(`${area.name} ${area.id}`).includes(query))
+    .filter(area => normalizeText(`${area.label} ${area.id}`).includes(query))
     .slice(0, 8);
   elements["search-results"].replaceChildren();
   for (const area of matches) {
@@ -260,7 +324,7 @@ function updateSearchResults() {
     button.className = "search-result";
     button.setAttribute("role", "option");
     const name = document.createElement("span");
-    name.textContent = area.name;
+    name.textContent = area.label;
     const id = document.createElement("small");
     id.textContent = area.id;
     button.append(name, id);
@@ -295,7 +359,7 @@ function updateMapColors() {
     const shape = state.shapes.get(area.id);
     const value = metricValue(area, state.metric);
     shape.style.fill = metricColor(state.metric, value, low, high, anomalyLimit);
-    shape.setAttribute("aria-label", `${area.name}, ${metricLabel(state.metric, value)}`);
+    shape.setAttribute("aria-label", `${area.label}, ${metricLabel(state.metric, value)}`);
   }
 
   if (state.metric === "maximum_apparent_temperature_difference_c") {
@@ -492,6 +556,12 @@ function svgElement(name, attributes) {
   const element = document.createElementNS(SVG_NS, name);
   for (const [key, value] of Object.entries(attributes)) element.setAttribute(key, String(value));
   return element;
+}
+
+function areaLabel(area) {
+  const prognoseraum = PROGNOSERAUM_NAMES[area.id.slice(0, 4)];
+  if (!prognoseraum || prognoseraum === area.name) return area.name;
+  return `${prognoseraum} · ${area.name}`;
 }
 
 function withMinimumSpan(sorted, low, high, span) {
