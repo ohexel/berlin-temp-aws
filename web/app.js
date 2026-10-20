@@ -25,6 +25,10 @@ const state = {
 
 const elements = {};
 
+// Forecast-temperature map: the colour scale covers at least this many degrees, centred on the
+// median, so that small differences between areas get only a small part of the scale.
+const MIN_TEMPERATURE_SPAN_C = 4;
+
 document.addEventListener("DOMContentLoaded", initialize);
 
 async function initialize() {
@@ -280,8 +284,11 @@ function updateMapColors() {
     .map(area => metricValue(area, state.metric))
     .filter(Number.isFinite)
     .sort((a, b) => a - b);
-  const low = quantile(values, .05);
-  const high = quantile(values, .95);
+  let low = quantile(values, .05);
+  let high = quantile(values, .95);
+  if (state.metric === "maximum_temperature_c") {
+    [low, high] = withMinimumSpan(values, low, high, MIN_TEMPERATURE_SPAN_C);
+  }
   const anomalyLimit = Math.max(Math.abs(low), Math.abs(high), 1);
 
   for (const area of state.areas) {
@@ -485,6 +492,12 @@ function svgElement(name, attributes) {
   const element = document.createElementNS(SVG_NS, name);
   for (const [key, value] of Object.entries(attributes)) element.setAttribute(key, String(value));
   return element;
+}
+
+function withMinimumSpan(sorted, low, high, span) {
+  if (high - low >= span) return [low, high];
+  const median = quantile(sorted, .5);
+  return [median - span / 2, median + span / 2];
 }
 
 function quantile(sorted, probability) {
