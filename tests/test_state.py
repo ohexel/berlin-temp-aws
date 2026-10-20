@@ -226,3 +226,71 @@ def test_mark_published(dynamodb):
         },
     )
     state.mark_published(dynamodb, "t", "2026-10-13T12:00Z", now)
+
+
+def test_run_flags(dynamodb):
+    expected = {
+        "TableName": "t",
+        "Key": META_KEY,
+        "ProjectionExpression": "published_at, finalize_requested_at",
+        "ConsistentRead": True,
+    }
+    run = "2026-10-13T12:00Z"
+    dynamodb.stubber.add_response("get_item", {}, expected_params=expected)
+    assert state.run_flags(dynamodb, "t", run) == (False, False)
+    dynamodb.stubber.add_response(
+        "get_item", {"Item": {"finalize_requested_at": {"S": "x"}}}, expected_params=expected
+    )
+    assert state.run_flags(dynamodb, "t", run) == (False, True)
+    dynamodb.stubber.add_response(
+        "get_item",
+        {"Item": {"published_at": {"S": "x"}, "finalize_requested_at": {"S": "y"}}},
+        expected_params=expected,
+    )
+    assert state.run_flags(dynamodb, "t", run) == (True, True)
+
+
+def test_done_lead_count_follows_pagination(dynamodb):
+    last = {"PK": {"S": "p"}, "SK": {"S": "lead#PT010H00M"}}
+    params = {
+        "TableName": "t",
+        "KeyConditionExpression": "PK = :pk AND begins_with(SK, :lead)",
+        "FilterExpression": "#status = :done",
+        "ExpressionAttributeNames": {"#status": "status"},
+        "ExpressionAttributeValues": {
+            ":pk": {"S": "run#2026-10-13T12:00Z"},
+            ":lead": {"S": "lead#"},
+            ":done": {"S": "DONE"},
+        },
+        "Select": "COUNT",
+        "ConsistentRead": True,
+    }
+    dynamodb.stubber.add_response(
+        "query", {"Count": 11, "ScannedCount": 20, "LastEvaluatedKey": last}, params
+    )
+    dynamodb.stubber.add_response(
+        "query", {"Count": 14, "ScannedCount": 15}, {**params, "ExclusiveStartKey": last}
+    )
+    assert state.done_lead_count(dynamodb, "t", "2026-10-13T12:00Z") == 25
+
+
+def test_mark_finalize_requested(dynamodb):
+    now = datetime(2026, 10, 13, 12, 45, tzinfo=UTC)
+    dynamodb.stubber.add_response(
+        "update_item",
+        {},
+        expected_params={
+            "TableName": "t",
+            "Key": META_KEY,
+            "UpdateExpression": (
+                "SET finalize_requested_at = if_not_exists(finalize_requested_at, :now), "
+                "#ttl = if_not_exists(#ttl, :ttl)"
+            ),
+            "ExpressionAttributeNames": {"#ttl": "ttl"},
+            "ExpressionAttributeValues": {
+                ":now": {"S": "2026-10-13T12:45:00+00:00"},
+                ":ttl": {"N": str(int(now.timestamp()) + 604800)},
+            },
+        },
+    )
+    state.mark_finalize_requested(dynamodb, "t", "2026-10-13T12:00Z", now)

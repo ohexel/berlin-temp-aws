@@ -165,7 +165,7 @@ flowchart TD
     CSCHED(["checker tick<br/>every 5 min, all hour<br/>only while enabled"])
 
     subgraph CHECKER["checker — every 5 minutes"]
-        C1["Take the run times of<br/>the last 3 full hours"]
+        C1["Take the run times of the current<br/>UTC hour and the two before"]
         C2{"Run already<br/>published?"}
         C3{"Finalize already<br/>requested?"}
         C4{"All 25 leads<br/>DONE?"}
@@ -269,7 +269,7 @@ finalize: {"run_time": "2026-10-13T12:00Z"}
 
 ### checker (every 5 minutes, all hour)
 
-1. Take the run times of the last 3 full hours (UTC).
+1. Take the run times of the current UTC hour and the two before it (the discover window), newest first.
 2. For each run: if `published_at` is set, skip; if `finalize_requested_at` is set, skip.
 3. Count the run's DONE leads with a strongly consistent read; fewer than 25 → skip.
 4. Send the finalize message; if sending fails, skip (the next tick tries again).
@@ -371,10 +371,10 @@ Each step: try it once via the CLI, delete it, then build it with Terraform. Ste
 
 These fill in the checker decision and were not discussed individually:
 
-- The checker examines the run times of the **last 3 full hours** (UTC), derived from the clock.
+- The checker examines the run times of the **current UTC hour and the two before it** (the same window as discover), derived from the clock.
 - It **sends the finalize message first, then records** `finalize_requested_at`. A crash in between causes at most a duplicate message, which finalize ignores.
 - Once `finalize_requested_at` is set, the checker never requests that run again, even if it is not published. A failed finalize is handled by its DLQ and manual redrive.
-- Checker settings: timeout 60 s, reserved concurrency 1. It is **not** included in the error alarm (only discover and finalize are).
+- Checker settings: timeout 60 s, no reserved concurrency. It is **not** included in the error alarm (only discover and finalize are).
 
 ## Known limitations (accepted)
 

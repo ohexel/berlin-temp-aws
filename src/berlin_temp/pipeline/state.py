@@ -141,3 +141,59 @@ def mark_published(dynamodb, table: str, run_label: str, now: datetime) -> None:
             ":ttl": {"N": str(int(now.timestamp()) + LEAD_TTL_SECONDS)},
         },
     )
+
+
+def run_flags(dynamodb, table: str, run_label: str) -> tuple[bool, bool]:
+    """(published, finalize_requested) from the run's meta item, in one consistent read."""
+    response = dynamodb.get_item(
+        TableName=table,
+        Key=_meta_key(run_label),
+        ProjectionExpression="published_at, finalize_requested_at",
+        ConsistentRead=True,
+    )
+    item = response.get("Item", {})
+    return "published_at" in item, "finalize_requested_at" in item
+
+
+def done_lead_count(dynamodb, table: str, run_label: str) -> int:
+    """Number of the run's lead items with status DONE (one consistent query)."""
+    request = {
+        "TableName": table,
+        "KeyConditionExpression": "PK = :pk AND begins_with(SK, :lead)",
+        "FilterExpression": "#status = :done",
+        "ExpressionAttributeNames": {"#status": "status"},
+        "ExpressionAttributeValues": {
+            ":pk": {"S": f"run#{run_label}"},
+            ":lead": {"S": "lead#"},
+            ":done": {"S": "DONE"},
+        },
+        "Select": "COUNT",
+        "ConsistentRead": True,
+    }
+    count = 0
+    while True:
+        response = dynamodb.query(**request)
+        count += response["Count"]
+        if "LastEvaluatedKey" not in response:
+            return count
+        request["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+
+
+def mark_finalize_requested(dynamodb, table: str, run_label: str, now: datetime) -> None:
+    """Set finalize_requested_at on the meta item (created if absent, with a 7-day ttl).
+
+    An existing value is kept, so an overlapping second checker cannot overwrite it.
+    """
+    dynamodb.update_item(
+        TableName=table,
+        Key=_meta_key(run_label),
+        UpdateExpression=(
+            "SET finalize_requested_at = if_not_exists(finalize_requested_at, :now), "
+            "#ttl = if_not_exists(#ttl, :ttl)"
+        ),
+        ExpressionAttributeNames={"#ttl": "ttl"},
+        ExpressionAttributeValues={
+            ":now": {"S": now.isoformat(timespec="seconds")},
+            ":ttl": {"N": str(int(now.timestamp()) + LEAD_TTL_SECONDS)},
+        },
+    )
