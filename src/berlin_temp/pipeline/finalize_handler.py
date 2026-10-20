@@ -5,8 +5,9 @@ import logging
 import os
 
 import boto3
+from botocore.config import Config
 
-from berlin_temp.pipeline.finalize import run_finalize
+from berlin_temp.pipeline.finalize import PUT_WORKERS, run_finalize
 from berlin_temp.pipeline.forecast import parse_run_label
 
 LOGGER = logging.getLogger(__name__)
@@ -19,7 +20,7 @@ def handler(event, context):
         raise ValueError(f"expected exactly 1 SQS record (batch size 1), got {len(records)}")
     run_time = parse_run_label(json.loads(records[0]["body"])["run_time"])
     summary = run_finalize(
-        boto3.client("s3"),
+        boto3.client("s3", config=Config(max_pool_connections=PUT_WORKERS)),
         boto3.client("dynamodb"),
         os.environ["DATA_BUCKET"],
         os.environ["DASHBOARD_BUCKET"],
