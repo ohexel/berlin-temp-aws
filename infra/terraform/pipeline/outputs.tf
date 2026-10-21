@@ -13,3 +13,7 @@ output "data_bucket_name" {
 output "ecr_repository_urls" {
   value = { for name, repo in aws_ecr_repository.images : name => repo.repository_url }
 }
+
+output "queue_urls" {
+  value = { for name, queue in aws_sqs_queue.main : name => queue.url }
+}

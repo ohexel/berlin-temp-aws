@@ -327,11 +327,11 @@ Event option: `{"plr_layer": "<WFS layer name>"}` skips layer discovery.
 | Role | Allowed |
 |---|---|
 | schedulers | invoke `discover` / invoke `checker` (one role each) |
-| discover | DynamoDB put/delete on the table · send to `ingest-queue` |
-| ingest_lead | S3 write `bronze/forecast/` and `silver/forecast_cell/` · read silver reference data · DynamoDB update · consume `ingest-queue` |
+| discover | DynamoDB query/put/delete on the table · send to `ingest-queue` |
+| ingest_lead | S3 write `bronze/forecast/` and `silver/forecast_cell/` · read `silver/mask/` · DynamoDB update · consume `ingest-queue` |
 | checker | DynamoDB query/get/update on the table · send to `finalize-queue` |
 | finalize | S3 read `silver/`, write `gold/forecast_plr*/` · dashboard bucket: read/write `data/`, list (so a missing pointer reads as "not found") · DynamoDB get/update · consume `finalize-queue` |
-| reference_build | S3 read/write `bronze/static/` · write silver reference data |
+| reference_build | S3 read/write `bronze/static/` · write silver reference data and `gold/static/` |
 
 ## Cost guards
 
