@@ -9,3 +9,9 @@ variable "alert_email" {
   type        = string
   sensitive   = true
 }
+
+variable "dashboard_bucket_name" {
+  description = "Existing dashboard bucket (managed by the dashboard module after the import)."
+  type        = string
+  default     = "berlin-temp-dashboard-<suffix>"
+}
