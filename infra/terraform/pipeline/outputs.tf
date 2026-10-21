@@ -9,3 +9,7 @@ output "state_table_name" {
 output "data_bucket_name" {
   value = aws_s3_bucket.data.bucket
 }
+
+output "ecr_repository_urls" {
+  value = { for name, repo in aws_ecr_repository.images : name => repo.repository_url }
+}
