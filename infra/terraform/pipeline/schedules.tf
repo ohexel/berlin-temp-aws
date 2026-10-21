@@ -57,6 +57,11 @@ resource "aws_scheduler_schedule" "tick" {
   target {
     arn      = aws_lambda_function.function[each.key].arn
     role_arn = aws_iam_role.scheduler[each.key].arn
+
+    # No retries by the scheduler: the next tick comes within minutes and every step is idempotent.
+    retry_policy {
+      maximum_retry_attempts = 0
+    }
   }
 
   depends_on = [aws_iam_role_policy.scheduler]
