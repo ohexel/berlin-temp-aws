@@ -5,3 +5,7 @@ output "alerts_topic_arn" {
 output "state_table_name" {
   value = aws_dynamodb_table.state.name
 }
+
+output "data_bucket_name" {
+  value = aws_s3_bucket.data.bucket
+}
