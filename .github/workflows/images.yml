@@ -1,0 +1,48 @@
+name: images
+
+# Build both Lambda images and push them to ECR, tagged with the short git SHA.
+# Runs on pushes to main that change the image contents. Deploying stays manual (terraform apply).
+on:
+  push:
+    branches: [main]
+    paths:
+      - Dockerfile
+      - pyproject.toml
+      - uv.lock
+      - src/**
+      - .github/workflows/images.yml
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  push:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.CI_IMAGES_ROLE_ARN }}
+          aws-region: eu-central-1
+      - id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+      - name: Build and push
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+        run: |
+          TAG=$(git rev-parse --short HEAD)
+          for name in pipeline reference; do
+            repo="berlin-temp-$name"
+            if out=$(aws ecr describe-images --repository-name "$repo" \
+                --image-ids imageTag="$TAG" 2>&1); then
+              echo "$repo:$TAG already exists, skipping"
+              continue
+            elif ! grep -q ImageNotFoundException <<< "$out"; then
+              echo "$out"
+              exit 1
+            fi
+            docker build --platform linux/amd64 --provenance=false \
+              --target "$name" -t "$REGISTRY/$repo:$TAG" .
+            docker push "$REGISTRY/$repo:$TAG"
+          done
