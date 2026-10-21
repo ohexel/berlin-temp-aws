@@ -1,9 +1,9 @@
 # Static dashboard: private bucket behind CloudFront with origin access control.
 # Written to match the stack that was built by hand with the CLI (imported, see imports.tf).
-# The existing resources carry the tag phase=s3-static; it is kept so the import shows no change.
+# The existing resources carry the tag phase=s3-static; it is kept next to component=dashboard.
 locals {
   origin_id = "s3-dashboard"
-  tags      = { phase = "s3-static" }
+  tags      = { phase = "s3-static", component = "dashboard" }
 }
 
 resource "aws_s3_bucket" "dashboard" {
