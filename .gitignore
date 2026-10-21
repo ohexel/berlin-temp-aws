@@ -22,3 +22,7 @@ crash.log
 .DS_Store
 .idea/
 .vscode/
+
+# Terraform variable values (contain e-mail address)
+terraform.tfvars
+*.auto.tfvars
