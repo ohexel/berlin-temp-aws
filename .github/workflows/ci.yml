@@ -17,3 +17,16 @@ jobs:
       - run: uv run ruff check .
       - run: uv run ruff format --check .
       - run: uv run pytest
+
+  terraform:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.16.6
+      - run: terraform fmt -check -recursive infra/terraform
+      - run: terraform -chdir=infra/terraform/pipeline init -backend=false -input=false
+      - run: terraform -chdir=infra/terraform/pipeline validate
+      - run: terraform -chdir=infra/terraform/dashboard init -backend=false -input=false
+      - run: terraform -chdir=infra/terraform/dashboard validate
