@@ -17,3 +17,7 @@ output "ecr_repository_urls" {
 output "queue_urls" {
   value = { for name, queue in aws_sqs_queue.main : name => queue.url }
 }
+
+output "lambda_function_names" {
+  value = [for f in aws_lambda_function.function : f.function_name]
+}

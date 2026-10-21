@@ -15,3 +15,13 @@ variable "dashboard_bucket_name" {
   type        = string
   default     = "berlin-temp-dashboard-<suffix>"
 }
+
+variable "pipeline_image_tag" {
+  description = "Git SHA tag of the berlin-temp-pipeline image (discover, ingest-lead, checker, finalize)."
+  type        = string
+}
+
+variable "reference_image_tag" {
+  description = "Git SHA tag of the berlin-temp-reference image (reference-build)."
+  type        = string
+}
