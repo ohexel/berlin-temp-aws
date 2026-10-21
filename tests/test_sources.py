@@ -222,6 +222,19 @@ def test_fetch_retries_a_reset(monkeypatch):
     assert content == b"abc" and info.size_bytes == 3 and len(attempts) == 2
 
 
+def test_fetch_passes_its_timeout_to_urlopen(monkeypatch):
+    seen = []
+
+    def fake_urlopen(request, timeout):
+        seen.append(timeout)
+        return _Download([b"abc", b""])
+
+    monkeypatch.setattr(sources.urllib.request, "urlopen", fake_urlopen)
+    sources.fetch("https://example.org/x", timeout=15)
+    sources.fetch("https://example.org/x")
+    assert seen == [15, sources.TIMEOUT_SECONDS]
+
+
 def test_fetch_to_file_restarts_after_a_reset_mid_download(monkeypatch, tmp_path):
     attempts = []
 

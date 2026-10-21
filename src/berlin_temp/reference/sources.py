@@ -101,12 +101,16 @@ def _request(url: str) -> urllib.request.Request:
     return urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Accept": "*/*"})
 
 
-def fetch(url: str, params: dict[str, str] | None = None) -> tuple[bytes, FetchInfo]:
-    """Download a small file into memory."""
+def fetch(
+    url: str,
+    params: dict[str, str] | None = None,
+    timeout: float = TIMEOUT_SECONDS,
+) -> tuple[bytes, FetchInfo]:
+    """Download a small file into memory (timeout = socket wait per attempt, in seconds)."""
     full_url = url if not params else f"{url}?{urllib.parse.urlencode(params)}"
 
     def download() -> tuple[bytes, FetchInfo]:
-        with urllib.request.urlopen(_request(full_url), timeout=TIMEOUT_SECONDS) as response:
+        with urllib.request.urlopen(_request(full_url), timeout=timeout) as response:
             content = response.read()
             info = FetchInfo(
                 source_url=full_url,

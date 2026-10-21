@@ -171,8 +171,17 @@ def test_list_runs_parses_encoded_and_plain_labels(monkeypatch):
         b'<a href="2026-10-19T13%3A00/">x</a> <a href="2026-10-19T14:00/">y</a>'
         b'<a href="2026-10-19T13:00/">dup</a> <a href="../">up</a>'
     )
-    monkeypatch.setattr(discover.sources, "fetch", lambda url: (html, None))
+    monkeypatch.setattr(discover.sources, "fetch", lambda url, timeout: (html, None))
     assert discover.list_runs() == [at(14), at(13)]
+
+
+def test_list_runs_uses_the_short_timeout(monkeypatch):
+    seen = []
+    monkeypatch.setattr(
+        discover.sources, "fetch", lambda url, timeout: seen.append(timeout) or (b"", None)
+    )
+    discover.list_runs()
+    assert seen == [discover.LIST_TIMEOUT_SECONDS] == [15]
 
 
 class _Response:

@@ -26,6 +26,8 @@ MAX_RUNS = 3
 WINDOW_HOURS_BEFORE_CURRENT = 2  # current UTC hour and the two before it
 MAX_NEW_PAIRS_PER_TICK = 5
 HEAD_TIMEOUT_SECONDS = 10
+# Directory listing: 3 attempts x 15 s + retry pauses (up to ~10.5 s) must fit in the 60 s Lambda.
+LIST_TIMEOUT_SECONDS = 15
 HEAD_WORKERS = 4  # fewer parallel connections to DWD (was 8)
 _RUN_PATTERN = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}")
 
@@ -36,7 +38,7 @@ class DiscoverError(RuntimeError):
 
 def list_runs() -> list[datetime]:
     """Runs advertised in the T_2M directory listing, newest first (UTC)."""
-    content, _ = sources.fetch(f"{BASE_URL}/T_2M/r/")
+    content, _ = sources.fetch(f"{BASE_URL}/T_2M/r/", timeout=LIST_TIMEOUT_SECONDS)
     text = urllib.parse.unquote(content.decode("utf-8", errors="replace"))
     labels = set(_RUN_PATTERN.findall(text))
     runs = (datetime.strptime(label, "%Y-%m-%dT%H:%M").replace(tzinfo=UTC) for label in labels)
