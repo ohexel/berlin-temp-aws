@@ -31,3 +31,9 @@ variable "schedules_enabled" {
   type        = bool
   default     = false
 }
+
+variable "no_publication_alarm_enabled" {
+  description = "Whether the no-publication alarm sends notifications. Keep false except during the continuous run."
+  type        = bool
+  default     = false
+}
