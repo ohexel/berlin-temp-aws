@@ -25,3 +25,9 @@ variable "reference_image_tag" {
   description = "Git SHA tag of the berlin-temp-reference image (reference-build)."
   type        = string
 }
+
+variable "schedules_enabled" {
+  description = "ENABLED/DISABLED state of both schedules. Keep false except during tests and the continuous run."
+  type        = bool
+  default     = false
+}

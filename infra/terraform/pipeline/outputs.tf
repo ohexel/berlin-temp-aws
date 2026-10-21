@@ -21,3 +21,7 @@ output "queue_urls" {
 output "lambda_function_names" {
   value = [for f in aws_lambda_function.function : f.function_name]
 }
+
+output "schedule_states" {
+  value = { for name, schedule in aws_scheduler_schedule.tick : name => schedule.state }
+}
