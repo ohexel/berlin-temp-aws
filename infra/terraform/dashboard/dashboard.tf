@@ -33,6 +33,7 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "dashboard" {
 
 resource "aws_cloudfront_origin_access_control" "dashboard" {
   name                              = "berlin-temp-oac"
+  description                       = "" # the existing OAC has none; the provider default would add one
   origin_access_control_origin_type = "s3"
   signing_behavior                  = "always"
   signing_protocol                  = "sigv4"
