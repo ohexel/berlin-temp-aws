@@ -13,7 +13,6 @@ variable "alert_email" {
 variable "dashboard_bucket_name" {
   description = "Existing dashboard bucket (managed by the dashboard module after the import)."
   type        = string
-  default     = "berlin-temp-dashboard-<suffix>"
 }
 
 variable "pipeline_image_tag" {

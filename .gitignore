@@ -26,3 +26,6 @@ crash.log
 # Terraform variable values (contain e-mail address)
 terraform.tfvars
 *.auto.tfvars
+
+# Terraform backend settings (account-specific)
+backend.hcl

@@ -7,5 +7,4 @@ variable "region" {
 variable "bucket_name" {
   description = "Existing dashboard bucket."
   type        = string
-  default     = "berlin-temp-dashboard-<suffix>"
 }

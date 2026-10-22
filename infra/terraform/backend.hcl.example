@@ -1,0 +1,3 @@
+# Copy to backend.hcl (git-ignored) and set your state bucket. Used by all three modules:
+#   terraform init -backend-config=../backend.hcl
+bucket = "berlin-temp-tfstate-<suffix>"

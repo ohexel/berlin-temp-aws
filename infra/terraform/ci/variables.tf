@@ -11,7 +11,6 @@ variable "github_subject_repository" {
     assume the CI roles only from this repository.
   EOT
   type        = string
-  default     = "<owner>@<owner-id>/berlin-temp-aws@<repo-id>"
 }
 
 variable "ecr_repositories" {

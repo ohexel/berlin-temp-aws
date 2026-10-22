@@ -1,0 +1,3 @@
+# Copy to terraform.tfvars (git-ignored) and fill in. The value must match the `sub` claim of
+# GitHub's OIDC token: owner and repository name, each with its numeric ID.
+github_subject_repository = "<owner>@<owner id>/berlin-temp-aws@<repository id>"

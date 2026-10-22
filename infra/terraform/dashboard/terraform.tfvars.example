@@ -1,0 +1,2 @@
+# Copy to terraform.tfvars (git-ignored) and fill in.
+bucket_name = "berlin-temp-dashboard-<suffix>"
