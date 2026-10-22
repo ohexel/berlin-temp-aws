@@ -10,13 +10,9 @@ resource "aws_iam_openid_connect_provider" "github" {
   client_id_list = ["sts.amazonaws.com"]
 }
 
-# Trust policy: only this repository, and only the given subject (branch or pull requests).
-data "aws_iam_policy_document" "trust" {
-  for_each = {
-    images = "repo:${var.github_subject_repository}:ref:refs/heads/main"
-    plan   = "repo:${var.github_subject_repository}:pull_request"
-  }
-
+# Image workflow (pushes to main): push to the two ECR repositories, nothing else.
+# Trust: only this repository, and only its main branch.
+data "aws_iam_policy_document" "images_trust" {
   statement {
     actions = ["sts:AssumeRoleWithWebIdentity"]
 
@@ -34,15 +30,14 @@ data "aws_iam_policy_document" "trust" {
     condition {
       test     = "StringEquals"
       variable = "${local.github_oidc_host}:sub"
-      values   = [each.value]
+      values   = ["repo:${var.github_subject_repository}:ref:refs/heads/main"]
     }
   }
 }
 
-# Image workflow (pushes to main): push to the two ECR repositories, nothing else.
 resource "aws_iam_role" "images" {
   name               = "berlin-temp-ci-images"
-  assume_role_policy = data.aws_iam_policy_document.trust["images"].json
+  assume_role_policy = data.aws_iam_policy_document.images_trust.json
 }
 
 data "aws_iam_policy_document" "images" {
@@ -75,15 +70,5 @@ resource "aws_iam_role_policy" "images" {
   policy = data.aws_iam_policy_document.images.json
 }
 
-# Plan workflow (pull requests): read-only. It runs terraform plan with -lock=false, so it needs
-# no write access to the state bucket. ReadOnlyAccess is broad (it can read S3 objects), which is
-# acceptable for a private single-owner repository.
-resource "aws_iam_role" "plan" {
-  name               = "berlin-temp-ci-plan"
-  assume_role_policy = data.aws_iam_policy_document.trust["plan"].json
-}
-
-resource "aws_iam_role_policy_attachment" "plan_read_only" {
-  role       = aws_iam_role.plan.name
-  policy_arn = "arn:aws:iam::aws:policy/ReadOnlyAccess"
-}
+# No plan role: terraform plan and apply run by hand (decision D7). A team project would add
+# a read-only role for `terraform plan` on pull requests.
