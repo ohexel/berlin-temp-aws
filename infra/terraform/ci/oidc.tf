@@ -13,8 +13,8 @@ resource "aws_iam_openid_connect_provider" "github" {
 # Trust policy: only this repository, and only the given subject (branch or pull requests).
 data "aws_iam_policy_document" "trust" {
   for_each = {
-    images = "repo:${var.github_repository}:ref:refs/heads/main"
-    plan   = "repo:${var.github_repository}:pull_request"
+    images = "repo:${var.github_subject_repository}:ref:refs/heads/main"
+    plan   = "repo:${var.github_subject_repository}:pull_request"
   }
 
   statement {
