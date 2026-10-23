@@ -24,7 +24,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ vars.CI_IMAGES_ROLE_ARN }}
+          role-to-assume: ${{ secrets.CI_IMAGES_ROLE_ARN }}
           aws-region: eu-central-1
       - id: ecr
         uses: aws-actions/amazon-ecr-login@v2
