@@ -11,6 +11,7 @@ on:
       - uv.lock
       - src/**
       - .github/workflows/images.yml
+  workflow_dispatch:
 
 permissions:
   id-token: write
