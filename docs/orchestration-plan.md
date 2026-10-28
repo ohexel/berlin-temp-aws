@@ -24,7 +24,7 @@ Status: draft for review (revision 3) · Scope: version 1 (25-point apparent-tem
 | discover | Runs newest first, leads ascending; retention window = current UTC hour and the two before; existing lead items are read with one query per run before any HEAD request to DWD |
 | Tick times | discover fires at :34, :39 … :59 UTC (six ticks, 5 new leads each, 30 slots for 25 leads). DWD publishes a run's first lead at about :30 and the last at about :40, so the first tick is likely to find leads |
 | Connection retries | Calls to DWD (directory listing, HEAD, GRIB download) and the other source downloads retry only connection-level failures (reset, timeout, TLS handshake failure; not HTTP answers, not certificate errors): two retries after about 2 s and 5 s, each randomised by +/-50 %. Every retry is logged. HEAD checks use 4 parallel workers (was 8). The directory listing waits at most 15 s per attempt (3 attempts plus pauses stay within the 60 s Lambda limit); other downloads keep 120 s. No time budget per tick and no change of the 5-lead cap |
-| Gold | `gold/forecast_plr/run=<run>/` (542 × 25 rows: area-weighted temperature and apparent temperature) and `gold/forecast_plr_summary/run=<run>/` (542 rows: highest temperature and the largest apparent-minus-air difference with their earliest hour, population, status; the difference is the hour with the largest magnitude in either direction, reported with its sign, ties to the earliest hour). No historical comparison in v1 |
+| Gold | `gold/forecast_plr/run=<run>/` (542 × 25 rows: area-weighted temperature and apparent temperature) and `gold/forecast_plr_summary/run=<run>/` (542 rows: highest temperature and the largest apparent-minus-air difference with their earliest hour, population, status; the difference is the hour with the largest magnitude in either direction, reported with its sign, ties to the earliest hour). No historical comparison as in capstone Dagster version |
 | Publication | Dashboard bucket: frontend and `data/geometry.json` uploaded by hand; per run `data/runs/<run>/summary.json` and `areas/<plr_id>.json`; pointer `data/current.json` written last; long cache for run folders, 60 s for the pointer; no CloudFront invalidation |
 | Map boundaries | Simplified once (20 m, topology preserved) by `reference_build` to `gold/static/plr_geometry.json` |
 | Lead label | DWD-native `PTxxxH00M` (e.g. `PT005H00M`) everywhere: messages, DynamoDB sort key, S3 keys, DWD URLs |
@@ -300,13 +300,13 @@ Event option: `{"plr_layer": "<WFS layer name>"}` skips layer discovery.
 
 | Setting | Value |
 |---|---|
-| Lambda timeouts | discover 60 s · checker 60 s · ingest 120 s · finalize 300 s (placeholders until measured) |
+| Lambda timeouts | discover 60 s · checker 60 s · ingest 120 s · finalize 300 s (not tuned; measured durations in the [run report](run-report.md)) |
 | `reference_build` | timeout 900 s · memory 3,008 MB · temporary disk 2,048 MB (placeholders until measured) |
 | Visibility timeout (≥ 6 × Lambda timeout) | ingest-queue 720 s · finalize-queue 1,800 s |
 | `maxReceiveCount` | 5 (both queues) |
 | DLQ message retention | 14 days |
 | Batch size | 1 |
-| Maximum concurrency of queue triggers | ingest 5 · finalize 2 (believed to be the minimum allowed; to verify) |
+| Maximum concurrency of queue triggers | ingest 5 · finalize 2 (2 is the minimum allowed; verified in the Lambda API reference, `ScalingConfig`) |
 | Reserved concurrency | none (the account limit of 10 concurrent executions does not allow reservations; overlapping ticks are harmless: conditional puts in discover, idempotent finalize) |
 
 ## Monitoring
@@ -342,7 +342,7 @@ Event option: `{"plr_layer": "<WFS layer name>"}` skips layer discovery.
 - DLQs end retries; no automatic redrive.
 - Log retention set on all log groups.
 - Existing AWS Budgets alerts remain as the backstop.
-- Checker every 5 minutes: ≈ 8,600 invocations/month, within the Lambda and Scheduler free allowances (estimate from N. Virginia list prices; Frankfurt to be confirmed).
+- Checker every 5 minutes: ≈ 8,600 invocations/month, within the Lambda and Scheduler free allowances (estimate from N. Virginia list prices; Frankfurt slightly higher).
 
 ## Tests before the continuous run
 
@@ -354,8 +354,8 @@ Event option: `{"plr_layer": "<WFS layer name>"}` skips layer discovery.
 6. Both schedules enabled for one hour → one full run end to end.
 
 ## Build order
-
-Each step: try it once via the CLI, delete it, then build it with Terraform. Steps 1 and 2 were built via the CLI first; they are deleted and rebuilt once Terraform is set up.
+During development, each step was done once via the CLI, then deleted, and
+finally rebuilt with Terraform.
 
 1. SNS topic + e-mail subscription
 2. DynamoDB table
@@ -369,9 +369,7 @@ Each step: try it once via the CLI, delete it, then build it with Terraform. Ste
 10. `checker` + schedule (created disabled)
 11. Alarms + log retention
 
-## Details added with the checker (to confirm)
-
-These fill in the checker decision and were not discussed individually:
+## Details on the checker
 
 - The checker examines the run times of the **current UTC hour and the two before it** (the same window as discover), derived from the clock.
 - It **sends the finalize message first, then records** `finalize_requested_at`. A crash in between causes at most a duplicate message, which finalize ignores.
@@ -379,14 +377,8 @@ These fill in the checker decision and were not discussed individually:
 - Checker settings: timeout 60 s, no reserved concurrency. It is **not** included in the error alarm (only discover and finalize are).
 
 ## Known limitations (accepted)
+These are known limitations that I accepted for the current state of the project.
 
-- **discover crash between creating the lead item and sending the ingest message.** The item says QUEUED but no message exists, so the lead is never processed and its run never reaches 25 DONE leads. The undo step covers a failed send, not a crash. Accepted for version 1; the only signal is the "no publication for 3 h" alarm. Recovery: delete the stuck lead item by hand so the next discover tick queues it again.
-
-- **Finalize can leave the pointer on an older run.** The "newer run already published" check (reading `data/current.json`) and the pointer write are separate steps about 7 s apart, and the finalize trigger allows 2 concurrent invocations. If two different runs are finalized at the same time, both can pass the check, and whichever writes last wins. Observed in the checker test on 2026-10-20: runs 09:00 and 10:00 were finalized together and the pointer ended on 09:00. Effect: the dashboard shows an older, valid run until the next run is published. It needs two different runs to finish within seconds of each other (for example a late older run completing together with a newer one). Accepted for version 1; a plain run is unaffected. Recovery: rewrite `data/current.json` by hand to the newest published run (its `published_at` is on the run's `meta` item in DynamoDB), or wait for the next run.
+- **discover crash between creating the lead item and sending the ingest message.** The item says QUEUED but no message exists, so the lead is never processed and its run never reaches 25 DONE leads. The undo step covers a failed send, not a crash. The only signal is the "no publication for 3 h" alarm. Recovery: delete the stuck lead item by hand so the next discover tick queues it again. 
+- **Finalize can leave the pointer on an older run.** The "newer run already published" check (reading `data/current.json`) and the pointer write are separate steps about 7 s apart, and the finalize trigger allows 2 concurrent invocations. If two different runs are finalized at the same time, both can pass the check, and whichever writes last wins. This was observed once during a manual checker test when two recent runs were finalized together and the pointer ended on earlier one. Effect: the dashboard shows an older, valid run until the next run is published. It needs two different runs to finish within seconds of each other (for example a late older run completing together with a newer one). Recovery: rewrite `data/current.json` by hand to the newest published run (its `published_at` is on the run's `meta` item in DynamoDB), or wait for the next run.
   - **Possible solution (not implemented): conditional pointer write.** S3 can refuse a write if the object changed since it was read. Finalize would (1) read the pointer and remember its ETag, or "no pointer"; (2) stop with `stale` if the pointer names a newer run; (3) write the pointer with `If-Match: <ETag>` (or `If-None-Match: *` if there was none); (4) if S3 refuses (HTTP 412, or 409 while another conditional write is in progress), go back to (1), at most about 5 times, then raise so SQS retries the message. Whichever order two finalize invocations run in, the pointer ends on the newest run. A run that ends as `stale` after writing its run folder leaves an unlinked folder (harmless) and does not set `published_at`. boto3 1.43 in the image supports `IfMatch` and `IfNoneMatch`. A maximum concurrency of 1 is not possible (the minimum for an SQS trigger is 2; reserved concurrency is ruled out by the account limit).
-
-## Open items
-
-- Timeouts and memory sizes measured on real runs.
-- Current prices for Lambda, SQS, DynamoDB, EventBridge Scheduler, CloudWatch before building.
-- Verify: minimum maximum-concurrency value for SQS triggers.

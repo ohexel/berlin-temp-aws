@@ -6,7 +6,11 @@ pipeline on AWS (eu-central-1). Portfolio project: built to be deployed,
 run for a documented period, costed, and torn down. Not intended to run
 indefinitely.
 
-Live dashboard (static snapshot of published runs):
+**Status:** built, run continuously for about 50 h (25 to 27 Oct 2026, 50
+hourly runs, all published), and torn down on 28 Oct 2026. Results:
+[docs/run-report.md](docs/run-report.md).
+
+Live dashboard (static snapshot of the last published run, 27 Oct 2026):
 https://d14k2nin89y0qt.cloudfront.net
 
 ## What it does
@@ -63,7 +67,7 @@ Key properties:
 | `infra/terraform/dashboard/` | Dashboard bucket and CloudFront |
 | `infra/terraform/ci/` | GitHub OIDC provider and image-push role |
 | `web/` | Dashboard frontend |
-| `.github/workflows/` | `ci.yml` (checks), `images.yml` (image build and push) |
+| `.github/workflows/` | `ci.yml` (checks); `images.yml` (image build and push) was removed after the teardown and is in the git history |
 
 The three Terraform root modules have separate state, so the dashboard can
 outlive the pipeline teardown.
@@ -78,6 +82,10 @@ uv run pytest
 ```
 
 ## Deployment
+
+The steps below are how the stack was deployed. The `images` workflow
+(step 4) was removed after the teardown; restore it from the git history to
+redeploy.
 
 Account-specific values (account ID, bucket names, alert e-mail) are not in
 the repository. They live in git-ignored files; `*.example` files show the
@@ -110,7 +118,7 @@ and `terraform fmt -check` and `validate` for all modules.
 
 Since this is a single-user demo project, there are no pull requests. If we
 anticipated any (if this became a team project or big enough to earn outside
-PRs), we would probably want `terraform plan` to run oon pull requests too,
+PRs), we would probably want `terraform plan` to run on pull requests too,
 with a read-only role (separate OIDC role, trust limited to pull request
 events).
 
@@ -140,27 +148,34 @@ after the Terraform rebuild:
 5. Two finalize messages for one run: one publication.
 6. Both schedules enabled for one hour: one complete run end to end.
 
-Continuous run (24 h) and cost report: pending.
+Continuous run, 25 to 27 Oct 2026 (details in
+[docs/run-report.md](docs/run-report.md)):
+
+- 50 of 50 hourly runs published; 1,250 forecast hours ingested, all on the
+  first attempt.
+- No errors, timeouts, retries or dead-letter messages; no alarm fired.
+- 57.6 min from model run time to publication, for every run.
+- Usage cost for the run days: about USD 0.28 before credits (preliminary),
+  mostly S3 requests.
 
 ## Known limitations
 
 - **Finalize pointer race.** If two different runs are finalized within
   seconds of each other, the pointer can end on the older run. Effect: the
-  dashboard shows an older, valid run until the next publication. A fix with
-  conditional S3 writes (ETag) is designed in the orchestration plan, not
-  implemented.
+  dashboard shows an older, valid run until the next publication. If this
+  were of concern, conditional S3 writes (ETag) could be used to avoid it.
 - **discover crash between item creation and queue send** leaves a lead
   QUEUED without a message. The "no publication" alarm is the only signal.
   Recovery is documented in the plan.
-- Lambda timeouts and memory sizes are provisional until measured on the
-  continuous run.
+- Lambda memory settings were not tuned. Measured peak memory stayed below a
+  third of the configured memory for every function (see the run report).
 
 ## Repository history
 
 Development started in a separate, project-specific GitHub account. This was
 my first substantial LLM-assisted project, with direct push access and a link
 to a live AWS account. I used a separate account and private repo to limit
-the fallout from any mistakes or leaks along the way. After the build, the
+the fallout from any mistakes or leaks while prototyping. After the build, the
 repository was moved to this account. History was rewritten to replace
 account-specific identifiers with placeholders, and the repository was
 recreated. Commit authorship therefore shows the `ohexel` identity and, where
