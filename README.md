@@ -155,8 +155,9 @@ Continuous run, 25 to 27 Oct 2026 (details in
   first attempt.
 - No errors, timeouts, retries or dead-letter messages; no alarm fired.
 - 57.6 min from model run time to publication, for every run.
-- Usage cost for the run days: about USD 0.28 before credits (preliminary),
-  mostly S3 requests.
+- Usage cost before credits: USD 0.28 for the run days, mostly S3 requests;
+  USD 0.39 for 20 to 28 Oct including setup and teardown; less than USD 0.01
+  since the teardown.
 
 ## Known limitations
 

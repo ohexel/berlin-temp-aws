@@ -1,7 +1,7 @@
 # Continuous run report
 
-Status: preliminary (2026-10-28). Cost figures are estimates from Cost
-Explorer, which lags by up to a day; they will be updated once final.
+Status: final. Run results from 2026-10-28; cost figures updated on
+2026-11-15 with final Cost Explorer values for October.
 
 ## Setup
 
@@ -57,23 +57,29 @@ Explorer, which lags by up to a day; they will be updated once final.
   with memory, so lower memory may also mean longer durations.
 - All cold-start init phases stayed below the 10 s init limit.
 
-## Cost (preliminary)
+## Cost
 
-Usage cost before credits, from Cost Explorer (all days still marked as
-estimated).
+Usage cost before credits, from Cost Explorer (queried 2026-11-15; all
+October days final).
 
 | Period | Total | Main items |
 |---|---|---|
 | Run days, 25 to 27 Oct | USD 0.28 | S3 0.22, Cost Explorer queries 0.04, ECR 0.03, DynamoDB < 0.01 |
-| Other days, 20 to 24 Oct and 28 Oct | USD 0.07 | S3 0.04, ECR 0.03, DynamoDB < 0.01 |
+| Other days, 20 to 24 Oct and 28 Oct | USD 0.10 | S3 0.04, ECR 0.03, Cost Explorer queries 0.03, DynamoDB < 0.01 |
+| **20 to 28 Oct** | **USD 0.39** | |
+| After teardown, 29 Oct to 14 Nov | < USD 0.01 | S3 only (kept dashboard snapshot and state bucket): USD 0.0002 for 29 to 31 Oct, USD 0.0005 for 1 to 14 Nov (November still estimated) |
 
 By `component` tag for the run days: dashboard USD 0.15, data USD 0.07,
-ECR USD 0.03, state (DynamoDB) < 0.01, untagged USD 0.04 (Cost Explorer).
+ECR USD 0.03, state (DynamoDB) < 0.01, Terraform state bucket < 0.01,
+untagged USD 0.04 (almost all Cost Explorer queries).
 
 - Most of the run cost is S3 requests, mainly the 543 files written to the
   dashboard bucket per published run.
 - Lambda, SQS, EventBridge Scheduler, CloudWatch, SNS and CloudFront show
   USD 0.00 for the whole period.
+- The preliminary report (28 Oct) showed USD 0.07 for the other days. The
+  difference is the Cost Explorer queries made on 28 Oct for that report
+  (USD 0.03), which had not been billed yet.
 - Days before 20 Oct were not included in this query.
 
 ## Teardown (2026-10-28)
