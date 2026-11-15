@@ -65,7 +65,7 @@ Key properties:
 | `Dockerfile` | Two build targets: `pipeline`, `reference` |
 | `infra/terraform/pipeline/` | Processing resources |
 | `infra/terraform/dashboard/` | Dashboard bucket and CloudFront |
-| `infra/terraform/ci/` | GitHub OIDC provider and image-push role |
+| `infra/terraform/ci/` | GitHub OIDC provider and image-push role (destroyed at the teardown) |
 | `web/` | Dashboard frontend |
 | `.github/workflows/` | `ci.yml` (checks); `images.yml` (image build and push) was removed after the teardown and is in the git history |
 
